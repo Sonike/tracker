@@ -85,7 +85,7 @@ def test_drops_and_new_wheels_pages_have_the_footer():
 def test_home_page_intro_has_one_star_link_to_the_tool():
     home = (ROOT / "site" / "index.html").read_text(encoding="utf-8")
     hero = home[home.index('<header class="hero">') : home.index('id="kpi-grid"')]
-    star = [link for link in links(home) if "star" in link[1].lower()]
+    star = [link for link in links(home) if re.search(r"\bstar\b", link[1], re.IGNORECASE)]
     # One link, worded for a screen reader too: the ★ is decoration next to the words, not the name.
     assert star == [(TOOL, "Star wheelgap on GitHub")]
     assert star[0] in links(hero)

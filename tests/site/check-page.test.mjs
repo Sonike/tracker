@@ -16,7 +16,7 @@ test("the line under a result links the tool's repo and its GitHub Action, as st
   const links = [...line[1].matchAll(/<a href="([^"]+)">(.*?)<\/a>/g)].map((m) => [m[1], m[2]]);
   assert.deepEqual(links, [
     [`${TOOL}/blob/main/docs/ci.md#github-action`, "GitHub Action"],
-    [TOOL, "★ star the project on GitHub"],
+    [TOOL, '<span aria-hidden="true">★</span> star the project on GitHub'],
   ]);
   assert.match(line[1], /^wheelgap is open source\. /);
   // Plain links: the page's Content-Security-Policy allows no remote images or frames, so no star-count widget.
