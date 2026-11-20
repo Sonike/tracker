@@ -54,8 +54,12 @@ def footer(page: str) -> str:
     return page[page.index("<footer") : page.index("</footer>")]
 
 
-def test_footer_names_the_tool_first_then_the_data_repo():
-    assert links(build_campaigns.FOOTER) == [(TOOL, "wheelgap (GitHub)"), (DATA, "wheelgap/tracker")]
+def test_footer_names_the_checker_and_the_tool_first_then_the_data_repo():
+    assert links(build_campaigns.FOOTER) == [
+        ("https://wheelgap.github.io/tracker/check/", "in your browser"),
+        (TOOL, "wheelgap (GitHub)"),
+        (DATA, "wheelgap/tracker"),
+    ]
     assert "Check your own project: <a" in build_campaigns.FOOTER
     # Plain links only: nothing the pages' Content-Security-Policy would block, nothing fetched.
     assert not re.search(r"<(img|iframe|script|link)\b", build_campaigns.FOOTER)

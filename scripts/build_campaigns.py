@@ -59,7 +59,8 @@ REPO_URL = "https://github.com/wheelgap/tracker"
 # site's data and source. Plain links only: the pages' CSP allows no scripts and no remote images.
 FOOTER = (
     '  <footer class="wrap">\n'
-    f'    <p>Check your own project: <a href="{TOOL_URL}">wheelgap (GitHub)</a> · '
+    f'    <p>Check your own project: <a href="{BASE_URL}check/">in your browser</a> or with '
+    f'<a href="{TOOL_URL}">wheelgap (GitHub)</a> · '
     f'Data and source: <a href="{REPO_URL}">wheelgap/tracker</a></p>\n'
     '  </footer>'
 )
