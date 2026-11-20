@@ -162,7 +162,7 @@ python3 scripts/check_notes.py
 pin=$(sed -n 's/^export const WHEELGAP = "wheelgap==\(.*\)";$/\1/p' site/check/worker.mjs)
 uvx --python 3.14 --refresh-package wheelgap --with "wheelgap==$pin" pytest@8.4.2 tests/test_check_driver.py
 node --check site/logic.js && node --check site/not-found.js && node --check site/app.js && node --check site/lab.js && for f in site/check/*.mjs; do node --check "$f"; done
-node --test tests/site/logic.test.js tests/site/scripts.test.js tests/site/check-logic.test.mjs tests/site/app.test.js tests/site/not-found.test.js
+node --test tests/site/logic.test.js tests/site/scripts.test.js tests/site/check-logic.test.mjs tests/site/check-page.test.mjs tests/site/app.test.js tests/site/not-found.test.js
 ```
 
 The first pytest run skips `tests/test_check_driver.py` when wheelgap isn't installed; the third command runs it with the wheelgap version the browser checker pins. Without `uv`, run the script tests on your own Python (3.11 or newer) in a virtual environment, since Homebrew's and most Linux distributions' `python3` refuse a plain `pip install`: `python3 -m venv .venv && .venv/bin/python -m pip install pytest==8.4.2 && .venv/bin/python -m pytest`. `unittest` alone doesn't collect most of them.

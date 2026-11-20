@@ -11,7 +11,7 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-from scripts import build_lab, build_pages, build_platform_pages
+from scripts import build_campaigns, build_lab, build_pages, build_platform_pages
 
 # Declared lab coverage for these tests. The musl entry's "platform" is the interpreter's (linux-aarch64), which must
 # not count as lab coverage for Linux ARM64.
@@ -118,6 +118,8 @@ class PlatformPageTests(unittest.TestCase):
         self.assertEqual(sitemap.count("<loc>https://wheelgap.github.io/tracker/platforms/win-arm64/</loc>"), 1)
         self.assertIn("default-src", win)
         self.assertIn('<link rel="alternate" type="application/atom+xml" title="New win-arm64 wheels" href="../../new/win-arm64.xml">', win)
+        for page in (root, win, linux):  # the footer's link to the tool, on the index and on each platform
+            self.assertIn(f"</main>\n{build_campaigns.FOOTER}\n</body>", page)
 
     def test_escaping(self):
         self.run_build()

@@ -373,6 +373,41 @@ button, input, select {
   line-height: 1.6;
 }
 
+/* The one prominent link to the tool's repo, under the intro. It wraps on a phone. */
+.hero-star {
+  margin-top: 14px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  color: var(--text-muted);
+  font-size: 0.86rem;
+}
+.star-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  background: var(--surface);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  font-size: 0.88rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.star-link:hover {
+  background: var(--surface-hover);
+  text-decoration: none;
+}
+.star-link:focus-visible {
+  outline: 2px solid var(--amber);
+  outline-offset: 2px;
+}
+.star-link span {
+  color: var(--amber-dark);
+}
+
 .meta {
   margin-top: 12px;
   color: var(--text-faint);

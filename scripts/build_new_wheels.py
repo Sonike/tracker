@@ -194,6 +194,7 @@ def page(items: list[dict], scanned: set[str]) -> str:
       <p class="note">From the nightly comparison of wheelgap coverage scans. Only changes to prebuilt wheels are listed; releases whose wheels were still uploading (gaining wheels within 7 days of losing them) are excluded.{more} Subscribe: <a href="../new.xml">Atom feed</a>. Feeds by platform: {platform_links}.</p>
 {body}    </section>
   </main>
+{build_campaigns.FOOTER}
 </body>
 </html>
 """

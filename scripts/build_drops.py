@@ -97,6 +97,7 @@ def page(items: list[dict], waiting: int, scanned: set[str]) -> str:
       <p class="note">Compared with the release the previous nightly scan saw. A missing wheel is listed only if the next night's scan still finds the same release without it, since wheels are often still uploading the night a release comes out; a release with no wheel at all yet waits until one shows up (up to a week), and a release that is yanked is taken off the list. When a release has no wheel left for one Python version (it ended support for that Python), that Python's platforms aren't listed.{pending}{more} Subscribe: <a href="../drops.xml">Atom feed</a>. As JSON: <a href="../data/drops.json">data/drops.json</a>.</p>
 {body}    </section>
   </main>
+{build_campaigns.FOOTER}
 </body>
 </html>
 """

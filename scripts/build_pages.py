@@ -686,6 +686,7 @@ def page(
     </section>
     <p class="sub"><a href="../../#package={e(name)}">All {len(scan["packages"]):,} packages</a></p>
   </main>
+{build_campaigns.FOOTER}
 {json_ld(name, version, url, summary)}</body>
 </html>
 """

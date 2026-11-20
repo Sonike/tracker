@@ -113,6 +113,14 @@ class CampaignTests(unittest.TestCase):
         self.assertEqual(meta("property", "og:image:height"), "640")
         self.assertEqual(meta("name", "twitter:card"), "summary_large_image")
 
+    def test_campaign_page_and_index_end_with_the_footer_that_links_the_tool(self):
+        page = self.built_page()
+        index = (self.site / "campaigns" / "index.html").read_text(encoding="utf-8")
+        self.assertIn('<a href="https://github.com/wheelgap/wheelgap">wheelgap (GitHub)</a>', build_campaigns.FOOTER)
+        for html in (page, index):
+            self.assertIn(f"</main>\n{build_campaigns.FOOTER}\n</body>", html)
+            self.assertEqual(html.count("<footer"), 1)
+
     def test_campaigns_index_has_open_graph_and_twitter_card_tags(self):
         self.write_inputs()
         self.assertEqual(

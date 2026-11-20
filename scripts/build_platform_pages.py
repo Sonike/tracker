@@ -65,6 +65,7 @@ def _page(
     {meta}
   </header>
   <main class="wrap">{content}</main>
+{build_campaigns.FOOTER}
 </body></html>
 """
 

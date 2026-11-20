@@ -203,6 +203,7 @@ function hideResultSections(hidden, keepSetup = false) {
   }
   for (const id of ["targets-title", "gaps-title", "next-title"]) $(id).closest("section").hidden = hidden;
   $("setup-title").closest("section").hidden = hidden && !keepSetup;
+  $("star-line").hidden = hidden;  // shown under a result, with or without gaps
 }
 
 function render() {

@@ -52,6 +52,17 @@ SAFE_ID = re.compile(r"[a-z0-9]+(-[a-z0-9]+)*")
 SAFE_NAME = re.compile(r"[a-z0-9]+(-[a-z0-9]+)*")
 BASE_URL = "https://wheelgap.github.io/tracker/"
 NOTES_URL = "https://github.com/wheelgap/tracker/blob/main/notes/"
+TOOL_URL = "https://github.com/wheelgap/wheelgap"
+REPO_URL = "https://github.com/wheelgap/tracker"
+# The footer of every generated page (package, platform, campaign, drops and new wheels pages): the tool
+# first, since a reader of one package's coverage may not know it can check their own project, then this
+# site's data and source. Plain links only: the pages' CSP allows no scripts and no remote images.
+FOOTER = (
+    '  <footer class="wrap">\n'
+    f'    <p>Check your own project: <a href="{TOOL_URL}">wheelgap (GitHub)</a> · '
+    f'Data and source: <a href="{REPO_URL}">wheelgap/tracker</a></p>\n'
+    '  </footer>'
+)
 NOTES_DIR = Path(__file__).resolve().parent.parent / "notes"
 # Note kinds (notes/README.md) that mean the campaign shouldn't ask upstream for this wheel. Only
 # "alternative" says that: a different package or extra has it. None of the kinds records that upstream
@@ -864,6 +875,7 @@ def page(
       <p>{progress}</p>
 {f'      <p class="note">{done_note}</p>{chr(10)}' if done_note else ""}{"" if mismatch else rows_html(done, kind="done", include_source=False)}    </section>
   </main>
+{FOOTER}
 </body>
 </html>
 """, listing
@@ -959,6 +971,7 @@ def index_page(listings: list[dict], generated: str, wheelgap: str) -> str:
         </table></div>
     </section>
   </main>
+{FOOTER}
 </body>
 </html>
 """
