@@ -48,7 +48,7 @@ start = "2026-11-21"
 python = "3.14t"
 # Compared with regular 3.14 on the same platform: most 3.14t gaps have no 3.14t wheel on any platform.
 compare = "gil"
-description = "Free-threaded Python (3.14t) runs without the global interpreter lock, so threads can run Python code on several cores at once. A package with compiled code needs its own cp314t wheel for it; until it uploads one, everyone on 3.14t builds it from source, or can't install it at all. This page lists the packages among the 500 most-downloaded that ship a Linux x86_64 wheel for regular Python 3.14 but none for 3.14t. A cp314t wheel says the package supports free-threading, so the thing to do is ask its maintainers whether that is planned, one package at a time, not send a build change."
+description = "Free-threaded Python (3.14t) runs without the global interpreter lock, so threads can run Python code on several cores at once. A package with compiled code needs its own cp314t wheel for it; until it uploads one, everyone on 3.14t builds it from source, or can't install it at all. This page lists the packages among the 500 most-downloaded that ship a Linux x86_64 wheel for regular Python 3.14 but none for 3.14t. Publishing a cp314t wheel is taken as saying the package supports free-threading, so the thing to do is ask its maintainers whether that is planned, one package at a time, not send a build change."
 sources = [
     "https://docs.python.org/3/howto/free-threading-python.html",
     "https://py-free-threading.github.io/",
