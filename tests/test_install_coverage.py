@@ -159,6 +159,20 @@ class InstallCoverageTests(unittest.TestCase):
                         '<span class="status s-source">Builds from source</span><ul><li><code>native==1.0</code> '
                         "has no distribution via <code>demo → native</code></li></ul>", page)
 
+    def test_missing_result_left_with_only_a_source_blocker_still_says_it_cannot_install(self):
+        """The malformed `missing` blocker is dropped; the summary must not read as "installs after a build"."""
+        install = self.scan["packages"][0]["install"]
+        install["3.14 win-arm64"] = {"status": "wheel", "blockers": []}  # keeps the summary short enough for details
+        install["3.14 musl-aarch64"]["blockers"] = [
+            {"name": "slow", "version": "1.0", "status": "source", "via": ["demo", "slow"]},
+            {"name": "native", "status": "missing"},  # no `via`
+        ]
+        page, printed = self.build_page("site")
+        self.assertIn("left out 1 malformed way_out or install entry on 1 package page", printed)
+        self.assertIn("on Alpine ARM64 it builds slow from source and can&#x27;t install", page)
+        self.assertNotIn("it builds slow from source;", page)
+        self.assertNotIn("it builds slow from source.", page)
+
     def test_version_that_is_not_a_string_reads_as_none(self):
         self.scan["packages"][0]["install"]["3.14 win-arm64"]["blockers"] = [
             {"name": "native", "version": 3, "status": "source", "via": ["demo", "native"]},

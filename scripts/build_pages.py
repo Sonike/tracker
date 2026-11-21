@@ -194,8 +194,12 @@ def install_gaps(lead: str, checked: list[tuple[str, dict]]) -> str:
                 names = names[:most] + [f"{len(names) - most} more"]
             if names:
                 parts.append(verb.format(join_names(names)))
-        if not parts:  # a result without blockers; shouldn't happen, but say the status
-            parts.append("builds from source" if result["status"] == "source" else "can't install")
+        # A `missing` result with no `missing` blocker left (none listed, or clean_install dropped it): still say
+        # it can't install, so a kept `source` blocker alone never reads as "it installs after a build".
+        if result["status"] == "missing" and not any(b["status"] == "missing" for b in result["blockers"]):
+            parts.append("can't install")
+        elif not parts:  # a `source` result without blockers; shouldn't happen, but say the status
+            parts.append("builds from source")
         return " and ".join(parts)
 
     for most in (None, 2, 1):
