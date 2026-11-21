@@ -71,3 +71,7 @@
 
 /* The closing line under a result: the tool's repo and its GitHub Action. */
 .star-line { margin: 32px 0 0; }
+
+/* The README badge offer in "Fix it": the image itself, then its Markdown and a Copy button. */
+#badge { margin-bottom: 20px; }
+.badge-img { vertical-align: middle; margin-right: 6px; }

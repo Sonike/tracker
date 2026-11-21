@@ -36,14 +36,13 @@ def _page(
     content: str,
     canonical: str,
     root: str,
-    feed_title: str | None = None,
-    feed_href: str | None = None,
+    feeds: list[tuple[str, str]] | None = None,
 ) -> str:
+    """feeds: (title, href) of each Atom feed the page advertises to feed readers."""
     e = html.escape
-    feed = (
+    feed = "".join(
         f'\n  <link rel="alternate" type="application/atom+xml" title="{e(feed_title)}" href="{e(feed_href)}">'
-        if feed_title and feed_href
-        else ""
+        for feed_title, feed_href in feeds or []
     )
     return f"""<!doctype html>
 <html lang="en">
@@ -61,6 +60,7 @@ def _page(
 <body>
   <header class="wrap">
     <p class="eyebrow"><a href="{root}">wheelgap tracker</a></p>
+{build_campaigns.site_nav(root, current="platforms", inside=root != "../")}
     <h1>{e(title)}</h1>
     <p class="lede">{e(lede)}</p>
     {meta}
@@ -299,6 +299,7 @@ def build(
     out.mkdir(parents=True, exist_ok=True)
     urls = [f"{BASE}platforms/"]
     index_rows = []  # (friendly, platform, python, ok, percent, gaps) for the index table
+    built = set()  # the platforms that got a page
 
     for platform, friendly in build_pages.PLATFORM_NAMES.items():
         # The newest non-free-threaded Python this platform has a target for (Pyodide lags behind).
@@ -361,12 +362,12 @@ def build(
                 content,
                 url,
                 "../../",
-                feed_title=f"New {platform} wheels",
-                feed_href=f"../../new/{platform}.xml",
+                feeds=[(f"New {platform} wheels", f"../../new/{platform}.xml")],
             ),
             encoding="utf-8",
         )
         index_rows.append((friendly, platform, python, ok, percent, gaps))
+        built.add(platform)
         urls.append(url)
 
     # Worst first, as on the home page's leaderboard; ties by name.
@@ -384,6 +385,8 @@ def build(
         f"<section><h2>Platforms</h2>{_index_table(index_rows)}</section>",
         f"{BASE}platforms/",
         "../",
+        # Every platform page's feed, so a feed reader pointed at the index finds them. PLATFORM_NAMES order.
+        feeds=[(f"New {p} wheels", f"../new/{p}.xml") for p in build_pages.PLATFORM_NAMES if p in built],
     )
     (out / "index.html").write_text(main, encoding="utf-8")
     build_campaigns.add_to_sitemap(site, urls)

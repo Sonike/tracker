@@ -1,5 +1,7 @@
 """Offline checks for publishing package install coverage to JSON and HTML."""
 
+import contextlib
+import io
 import json
 import tempfile
 import unittest
@@ -107,6 +109,90 @@ class InstallCoverageTests(unittest.TestCase):
         build_pages.build(self.coverage(), output, root=self.root)
         page = (output / "p" / "demo" / "index.html").read_text(encoding="utf-8")
         self.assertNotIn('href="../crypto', page)
+
+    def build_page(self, site):
+        """The demo page and what the build printed."""
+        printed = io.StringIO()
+        with contextlib.redirect_stdout(printed):
+            build_pages.build(self.coverage(), self.root / site, root=self.root)
+        return (self.root / site / "p" / "demo" / "index.html").read_text(encoding="utf-8"), printed.getvalue()
+
+    def test_malformed_install_results_are_left_out_with_one_warning(self):
+        """#179: scan_install.py's output isn't checked before it's committed, so the page must not trust it."""
+        good = {"name": "native", "version": "1.0", "status": "missing", "via": ["demo", "native"]}
+        cases = {
+            "no blockers": ({"status": "source"}, 1),
+            "blockers not a list": ({"status": "source", "blockers": "x"}, 1),
+            "blocker not an object": ({"status": "source", "blockers": ["x", good]}, 1),
+            "blocker fields": (
+                {"status": "source", "blockers": [
+                    {"version": "1", "status": "source", "via": []},
+                    {"name": 5, "version": "1", "status": "source", "via": []},
+                    {"name": "bad-status", "version": "1", "status": "wheel", "via": []},
+                    {"name": "bad-via", "version": "1", "status": "source", "via": "demo"},
+                    {"name": "bad-via-item", "version": "1", "status": "source", "via": ["demo", 5]},
+                    good,
+                ]},
+                5,
+            ),
+            "result not an object": ("source", 1),
+            "status not a string": ({"status": ["source"], "blockers": []}, 1),
+        }
+        valid, printed = self.build_page("valid")
+        self.assertEqual(printed, "")
+        for number, (label, (result, dropped)) in enumerate(cases.items()):
+            with self.subTest(label):
+                self.scan["packages"][0]["install"] = {**self.install, "3.14 win-arm64": result}
+                page, printed = self.build_page(f"site{number}")
+                self.assertEqual(printed.count("::warning::"), 1)
+                noun = "entry" if dropped == 1 else "entries"
+                self.assertIn(f"left out {dropped} malformed way_out or install {noun} on 1 package page\n", printed)
+                # The other targets' results still show.
+                self.assertIn("Wheels for the whole tree", page)
+                self.assertIn("Missing distribution", page)
+                self.assertIn("<code>native</code> has no distribution via", page)
+                self.assertNotIn("bad-", page)
+                shown = '<th scope="row">3.14 win-arm64</th>' in page
+                self.assertEqual(shown, isinstance(result, dict))
+                if isinstance(result, dict) and isinstance(result.get("blockers"), list) and good in result["blockers"]:
+                    self.assertIn(
+                        '<span class="status s-source">Builds from source</span><ul><li><code>native==1.0</code> '
+                        "has no distribution via <code>demo → native</code></li></ul>", page)
+
+    def test_missing_result_left_with_only_a_source_blocker_still_says_it_cannot_install(self):
+        """The malformed `missing` blocker is dropped; the summary must not read as "installs after a build"."""
+        install = self.scan["packages"][0]["install"]
+        install["3.14 win-arm64"] = {"status": "wheel", "blockers": []}  # keeps the summary short enough for details
+        install["3.14 musl-aarch64"]["blockers"] = [
+            {"name": "slow", "version": "1.0", "status": "source", "via": ["demo", "slow"]},
+            {"name": "native", "status": "missing"},  # no `via`
+        ]
+        page, printed = self.build_page("site")
+        self.assertIn("left out 1 malformed way_out or install entry on 1 package page", printed)
+        self.assertIn("on Alpine ARM64 it builds slow from source and can&#x27;t install", page)
+        self.assertNotIn("it builds slow from source;", page)
+        self.assertNotIn("it builds slow from source.", page)
+
+    def test_version_that_is_not_a_string_reads_as_none(self):
+        self.scan["packages"][0]["install"]["3.14 win-arm64"]["blockers"] = [
+            {"name": "native", "version": 3, "status": "source", "via": ["demo", "native"]},
+            {"name": "other", "status": "source", "via": ["demo", "other"]},
+        ]
+        page, printed = self.build_page("site")
+        self.assertEqual(printed, "")
+        self.assertIn("<li><code>native</code> builds from source via <code>demo → native</code></li>", page)
+        self.assertIn("<li><code>other</code> builds from source via <code>demo → other</code></li>", page)
+
+    def test_install_that_is_not_an_object_gives_no_section(self):
+        self.scan["packages"][0]["install"] = ["3.14 win-arm64"]
+        page, printed = self.build_page("site")
+        self.assertIn("left out 1 malformed way_out or install entry on 1 package page", printed)
+        self.assertNotIn("install-coverage", page)
+
+    def test_clean_install_keeps_well_formed_results_as_they_are(self):
+        self.assertEqual(build_pages.clean_install(self.install), (self.install, 0))
+        hints = {"3.14 win-arm64": {"release": "1.4", "kind": "older"}}
+        self.assertEqual(build_pages.clean_way_out(hints), (hints, 0))
 
 def blocker(name, status="source"):
     return {"name": name, "version": "1.0", "status": status, "via": ["mcp", name]}

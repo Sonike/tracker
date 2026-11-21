@@ -21,7 +21,7 @@ Most projects already ship wheels with [cibuildwheel](https://cibuildwheel.pypa.
 - **musllinux** (Alpine and other musl systems). cibuildwheel builds these by default on Linux; see [Linux builds](https://cibuildwheel.pypa.io/en/stable/platforms/#linux). If they are missing, the project usually skips them: [pygit2#1266](https://github.com/libgit2/pygit2/pull/1266) is a compact example that removed its `*musl*` skip and published the wheels.
 - **Linux aarch64.** GitHub’s [arm64 hosted runners](https://docs.github.com/en/actions/reference/runners/github-hosted-runners#standard-github-hosted-runners-for-public-repositories) (`ubuntu-24.04-arm`) build natively. QEMU still works, and is much slower: [psutil#2425](https://github.com/giampaolo/psutil/pull/2425) added manylinux aarch64 wheels with QEMU, while [PyYAML#864](https://github.com/yaml/pyyaml/pull/864) moved its aarch64 jobs to native `ubuntu-24.04-arm`.
 - **Windows on ARM.** cibuildwheel documents [Windows ARM64 builds](https://cibuildwheel.pypa.io/en/stable/platforms/#windows-arm64). It can cross-compile them on any Windows runner (select it with [`archs`](https://cibuildwheel.pypa.io/en/stable/options/#archs); only setuptools and setuptools-rust builds cross-compile), but tests need a native `windows-11-arm` runner; cross-compiled ARM64 wheels go out untested. [PyYAML#864](https://github.com/yaml/pyyaml/pull/864) is an example of adding `win_arm64` to an existing matrix on `windows-11-arm`. More in [Windows on ARM (win_arm64)](#windows-on-arm-win_arm64) below.
-- **Free-threaded builds** (`cp314t`, `cp315t`): cibuildwheel builds them by default (`cp314t` since 3.1, `cp315t` since 4.2), so a missing one usually means the project skips `cp31?t-*` or pins an older cibuildwheel. Removing that skip declares free-threading support, so leave that decision to the maintainers.
+- **Free-threaded builds** (`cp314t`, `cp315t`): cibuildwheel builds them by default, so a missing one is usually a decision, not an oversight. Ask, don't patch: see [Free-threaded Python (cp314t)](#free-threaded-python-cp314t) below.
 - **Testing the wheel** in CI with [`test-command`](https://cibuildwheel.pypa.io/en/stable/options/#test-command) (`CIBW_TEST_COMMAND`), so a broken wheel does not get uploaded.
 
 ### Windows on ARM (win_arm64)
@@ -35,6 +35,16 @@ The [Windows on ARM campaign](https://wheelgap.github.io/tracker/campaigns/win-a
   - **MSVC flags and x86-only code.** Flags such as `/arch:AVX2`, and SSE or AVX intrinsics from `<immintrin.h>`, only exist on x86. Guard them with `#if defined(_M_X64) || defined(_M_IX86)` and keep the portable code path for `_M_ARM64`, rather than adding NEON code nobody asked for.
   - **Test dependencies without a win_arm64 wheel.** The test step then builds them from source or fails. Check them with `uvx wheelgap <name> -t win-arm64` before blaming the package itself.
 - **Checking a release:** pip can confirm a wheel exists without a Windows machine: `pip download --no-deps --only-binary=:all: --platform win_arm64 --python-version 3.14 --implementation cp --abi cp314 -d /tmp/check <name>==<version>`.
+
+### Free-threaded Python (cp314t)
+
+The [free-threaded Python 3.14 campaign](https://wheelgap.github.io/tracker/campaigns/ft-314-linux/) lists the most-downloaded packages that ship a Linux x86_64 wheel for Python 3.14 but none for the free-threaded build, 3.14t. The specifics:
+
+- **Why the wheel is usually missing.** cibuildwheel builds free-threaded wheels by default (`cp314t` since 3.1, `cp315t` since 4.2), so a project that builds `cp314` wheels and has no `cp314t` one usually skips `cp31?t-*` or pins an older cibuildwheel.
+- **It’s the maintainers’ call.** Removing that skip publishes a `cp314t` wheel, and people on 3.14t will take it as free-threading support. Whether the extension really runs without the GIL is declared in its code (next point), so the request is a question (“is free-threading support planned?”), not a pull request that removes the skip. Search the project’s issues for “free-threaded”, “free-threading”, “nogil” and “cp314t” first; many projects already track it.
+- **What support involves.** An extension module has to say it doesn’t need the GIL (the `Py_mod_gil` slot); if it doesn’t, importing it turns the GIL back on for the whole process. Its own state then has to be safe when several threads run at once. The [free-threading guide](https://py-free-threading.github.io/) covers porting and testing. That is work on the library itself, which is why it isn’t a drive-by change.
+- **What the tracker already knows.** For some packages the build lab builds the sdist on 3.14t and records whether importing the result kept the GIL off or turned it back on. The package’s page shows that under its 3.14t `source` cells; link it in the issue if it is there.
+- **Checking a release:** `uvx wheelgap <name>==<version> -p 3.14t -t linux-x86_64`.
 
 Keep the change to the workflow and the project’s existing test suite. Don’t add a new backend or rewrite the package’s build unless the maintainers ask for that.
 

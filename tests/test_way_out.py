@@ -67,6 +67,42 @@ def test_package_publication_shows_suggestions_only_for_gaps(tmp_path):
     assert "the last release with a wheel here" not in (site / "p" / "older-snapshot" / "index.html").read_text(encoding="utf-8")
 
 
+GOOD_HINT = {"3.14 macos-arm64": {"release": "2.1", "kind": "newer"}}
+
+
+@pytest.mark.parametrize(
+    ("way_out", "dropped"),
+    [
+        ([], 1),
+        ({"3.14 win-arm64": "46.0.3", **GOOD_HINT}, 1),
+        ({"3.14 win-arm64": {"release": "46.0.3"}, **GOOD_HINT}, 1),
+        ({"3.14 win-arm64": {"release": 46, "kind": "older"}, **GOOD_HINT}, 1),
+        ({"3.14 win-arm64": {"release": "46.0.3", "kind": "sideways"}, "3.14 macos-arm64": None}, 2),
+    ],
+)
+def test_malformed_way_out_is_left_out_with_one_warning(tmp_path, capsys, way_out, dropped):
+    """#179: scan_way_out.py's output isn't checked before it's committed, so the pages must not trust it."""
+    data = snapshot([
+        package(1, "demo", ["source", "missing", "wheel"], way_out=way_out),
+        package(2, "other", ["source", "missing", "wheel"], way_out="46.0.3"),
+    ])
+    build_pages.build(write_scan(tmp_path / "coverage.json", data), tmp_path / "site", root=tmp_path)
+    out = capsys.readouterr().out
+    assert out.count("::warning::") == 1
+    assert f"left out {dropped + 1} malformed way_out or install entries on 2 package pages" in out
+    page = (tmp_path / "site" / "p" / "demo" / "index.html").read_text(encoding="utf-8")
+    assert "46.0.3" not in page
+    # The page is the one the usable hints alone give: its other cells still show.
+    kept = {k: v for k, v in way_out.items() if v == GOOD_HINT.get(k)} if isinstance(way_out, dict) else {}
+    data["packages"][0]["way_out"] = kept
+    del data["packages"][1]["way_out"]
+    build_pages.build(write_scan(tmp_path / "clean.json", data), tmp_path / "clean", root=tmp_path)
+    assert capsys.readouterr().out == ""
+    assert page == (tmp_path / "clean" / "p" / "demo" / "index.html").read_text(encoding="utf-8")
+    assert ("Upgrade to 2.1 for a wheel here." in page) == bool(kept)
+    assert 'class="status s-source"' in page and 'class="status s-wheel"' in page
+
+
 @pytest.fixture
 def wheelgap_api(monkeypatch):
     make_targets = Mock(side_effect=lambda _python, platform, **_baselines: platform)

@@ -71,8 +71,9 @@ NOTES_DIR = Path(__file__).resolve().parent.parent / "notes"
 SET_ASIDE_KINDS = ("alternative",)
 # What a to-do package has that the campaign's target lacks: by default ("platform") a wheel for the campaign's
 # Python on another platform of the same OS; for a new-Python campaign ("python"), a wheel on the campaign's
-# platform for the Python before it, since on a new Python most packages have no wheel anywhere yet.
-COMPARE = ("platform", "python")
+# platform for the Python before it, since on a new Python most packages have no wheel anywhere yet; for a
+# free-threaded campaign ("gil"), a wheel on the campaign's platform for the same Python without the `t`.
+COMPARE = ("platform", "python", "gil")
 PLATFORM_NAMES = {
     "linux-x86_64": "Linux x86_64",
     "linux-aarch64": "Linux ARM64",
@@ -158,12 +159,19 @@ def load_campaigns(config_path: Path) -> list[dict]:
             sys.exit(f"build_campaigns: campaign {ident!r} start must be a date, YYYY-MM-DD")
         campaign["start"] = start
         python = campaign.get("python")
-        if python is not None and not (isinstance(python, str) and re.fullmatch(r"3\.\d+", python)):
-            sys.exit(f"build_campaigns: campaign {ident!r} python must be like \"3.14\" (not free-threaded)")
+        if python is not None and not (isinstance(python, str) and re.fullmatch(r"3\.\d+t?", python)):
+            sys.exit(f"build_campaigns: campaign {ident!r} python must be like \"3.14\", or \"3.14t\" for free-threaded")
         if campaign.setdefault("compare", "platform") not in COMPARE:
             sys.exit(f"build_campaigns: campaign {ident!r} compare must be one of {', '.join(map(repr, COMPARE))}")
         if campaign["compare"] == "python" and python is None:
             sys.exit(f"build_campaigns: campaign {ident!r} compare = \"python\" needs a python")
+        # A free-threaded Python is only ever compared with its own GIL build: the other rules don't fit it
+        # (previous_python skips free-threaded Pythons, and most 3.14t gaps have no 3.14t wheel on any platform).
+        free_threaded = python is not None and python.endswith("t")
+        if free_threaded and campaign["compare"] != "gil":
+            sys.exit(f"build_campaigns: campaign {ident!r} python {python!r} is free-threaded, so it needs compare = \"gil\"")
+        if campaign["compare"] == "gil" and not free_threaded:
+            sys.exit(f"build_campaigns: campaign {ident!r} compare = \"gil\" needs a free-threaded python like \"3.14t\"")
         for field in ("title", "platform", "description", "how_to"):
             if field in campaign and not isinstance(campaign[field], str):
                 sys.exit(f"build_campaigns: campaign {ident!r} {field} must be a string")
@@ -237,8 +245,16 @@ def compare_indexes(targets: list[dict], python: str, platform: str, compare: st
     """The targets a to-do package needs a wheel on (besides the campaign's own) to be on the list.
 
     "platform": native_indexes. "python": the campaign's target and the same platform on the Python before it.
+    "gil": the campaign's (free-threaded) target and the same platform on the same version without the `t`.
     A package with no wheel on any of them is left out, not asked about.
     """
+    if compare == "gil":
+        regular = python.removesuffix("t")
+        found = [i for i, t in enumerate(targets) if t["platform"] == platform and t["python"] in (python, regular)]
+        if regular == python or not any(targets[i]["python"] == regular for i in found):
+            # As for "python": with nothing to compare with, the to-do list would always be empty.
+            sys.exit(f"build_campaigns: compare = \"gil\" needs a free-threaded python with {regular} on {platform} in the scan")
+        return found
     if compare != "python":
         return native_indexes(targets, python, platform)
     previous = previous_python(targets, python, platform)
@@ -648,6 +664,37 @@ def og_tags(title: str, description: str, url: str) -> str:
     return "\n".join(lines)
 
 
+# The site nav every page below the home page carries (#181): section key, path under the site root, label.
+# site/check/index.html and site/404.html carry a hand-written copy; tests/test_site_metadata.py keeps them the same.
+NAV_SECTIONS: tuple[tuple[str, str, str], ...] = (
+    ("search", "", "Search packages"),
+    ("check", "check/", "Check a repo"),
+    ("platforms", "platforms/", "Platforms"),
+    ("campaigns", "campaigns/", "Campaigns"),
+    ("new", "new/", "New wheels"),
+    ("drops", "drops/", "Dropped platforms"),
+)
+
+
+def site_nav(root: str, current: str | None = None, *, inside: bool = False) -> str:
+    """The <nav aria-label="Site"> for a page's header, linking the site's sections.
+
+    `root` is the path from the page to the site root ("../", "../../", or "/tracker/" on the 404 page). `current`
+    is the key of the section the page belongs to: its link gets aria-current="page" on the section's own page, or
+    aria-current="true" with `inside` for a page within it (platforms/win-arm64/). Package pages and the 404 page
+    pass no section, so no link is marked.
+    """
+    if current is not None and current not in {key for key, _, _ in NAV_SECTIONS}:
+        raise ValueError(f"site_nav: unknown section {current!r}")
+    e = html.escape
+    lines = ['    <nav aria-label="Site">']
+    for key, path, label in NAV_SECTIONS:
+        mark = f' aria-current="{"true" if inside else "page"}"' if key == current else ""
+        lines.append(f'      <a href="{e(root + path, quote=True)}"{mark}>{e(label)}</a>')
+    lines.append("    </nav>")
+    return "\n".join(lines)
+
+
 def page(
     campaign: dict,
     scan: dict,
@@ -697,8 +744,19 @@ def page(
     )
     checked_note = f" {len(errors)} couldn't be looked up in this scan and aren't counted." if errors else ""
     previous = previous_python(scan["targets"], python, platform) if compare == "python" else None
+    regular = python.removesuffix("t") if compare == "gil" else None
+    # A free-threaded campaign names its Python where the others just say "a wheel": 3.14 has one here.
+    for_python = f" for Python {python}" if regular else ""
     waiting_html = ""
-    if waiting and compare == "python":
+    if waiting and regular:
+        names = ", ".join(e(p["name"]) for p in waiting)
+        waiting_html = (
+            f'      <p class="note">Left out: {len(waiting)} {"package has" if len(waiting) == 1 else "packages have"} '
+            f"no {e(platform_name)} wheel for Python {e(regular)} either ({names}). Without a wheel for the regular "
+            f"build, a missing Python {e(python)} wheel isn't a free-threading gap (an sdist-only release, or no "
+            f"{e(platform_name)} wheels by design), so this campaign doesn't ask about it.</p>\n"
+        )
+    elif waiting and compare == "python":
         names = ", ".join(e(p["name"]) for p in waiting)
         before = f"Python {e(previous)} or {e(python)}" if previous else f"Python {e(python)}"
         waiting_html = (
@@ -737,6 +795,11 @@ def page(
         if previous
         else f"have Python {python} wheels for other platforms but not {platform_name}"
     )
+    if regular:
+        todo_why = (
+            f"have {article(platform_name)} {platform_name} wheel for Python {regular} but not for "
+            f"free-threaded Python {python}"
+        )
     sources_html = ""
     if campaign.get("sources"):
         links = " · ".join(f'<a href="{e(u)}">{e(u.removeprefix("https://"))}</a>' for u in campaign["sources"])
@@ -773,7 +836,7 @@ def page(
         progress = (
             f'<strong>{len(done):,} of the {count:,}</strong> {"package" if count == 1 else "packages"} on the '
             f"to-do list at the start ({start}) now {'has' if len(done) == 1 else 'have'} "
-            f"{e(article(platform_name))} {e(platform_name)} wheel."
+            f"{e(article(platform_name))} {e(platform_name)} wheel{e(for_python)}."
         )
     else:
         progress = f"Nothing was on the to-do list at the start ({start})."
@@ -857,6 +920,7 @@ def page(
 <body>
   <header class="wrap">
     <p class="eyebrow"><a href="../../">wheelgap tracker</a> · <a href="../">Campaigns</a></p>
+{site_nav("../../", current="campaigns", inside=True)}
     <h1>{e(title)}</h1>
     <p class="lede">{e(lede)}</p>
 {sources_html}    <p class="meta">From the wheelgap {e(str(scan["wheelgap"]))} scan of {e(generated)}, using Python {e(python)}{python_why}. As JSON: <a href="../../data/campaigns/{e(campaign['id'])}.json">data/campaigns/{e(campaign['id'])}.json</a>.</p>
@@ -864,7 +928,7 @@ def page(
   <main class="wrap">
     <section>
       <h2>Coverage</h2>
-      <p><strong>{e(share)}</strong> of the top {top} packages have {e(article(platform_name))} {e(platform_name)} wheel today ({wheels:,} of {total:,}).{checked_note}</p>
+      <p><strong>{e(share)}</strong> of the top {top} packages have {e(article(platform_name))} {e(platform_name)} wheel{e(for_python)} today ({wheels:,} of {total:,}).{checked_note}</p>
       <p>Pure-Python packages have a wheel for every platform, so that share flatters it. Of the {compiled_total:,} with compiled code, <strong>{e(percent(compiled_wheels, compiled_total))}</strong> have one ({compiled_wheels:,} of {compiled_total:,}).</p>
 {trend_html(trend(history, label, campaign["start"]), label, campaign["start"])}    </section>
     <section>
@@ -956,6 +1020,7 @@ def index_page(listings: list[dict], generated: str, wheelgap: str) -> str:
 <body>
   <header class="wrap">
     <p class="eyebrow"><a href="../">wheelgap tracker</a></p>
+{site_nav("../", current="campaigns")}
     <h1>Campaigns</h1>
     <p class="lede">Each campaign takes one platform and turns the missing wheels among the most-downloaded packages into a to-do list people can work through, one package at a time.</p>
     <p class="meta">From the wheelgap {e(wheelgap)} scan of {e(generated)}.</p>
@@ -963,7 +1028,7 @@ def index_page(listings: list[dict], generated: str, wheelgap: str) -> str:
   <main class="wrap">
     <section>
       <h2>All campaigns</h2>
-      <p class="note">Coverage is the share of each campaign's top packages with a wheel for its platform and Python. To do counts the packages that have wheels for that Python on other platforms but not this one, or, for a new-Python campaign, a wheel on that platform for the Python before it but not for the new one. As JSON: <a href="../data/campaigns.json">data/campaigns.json</a>.</p>
+      <p class="note">Coverage is the share of each campaign's top packages with a wheel for its platform and Python. To do counts the packages that have wheels for that Python on other platforms but not this one, or, for a new-Python campaign, a wheel on that platform for the Python before it but not for the new one, or, for a free-threaded campaign, a wheel on that platform for the same Python's regular build but not the free-threaded one. As JSON: <a href="../data/campaigns.json">data/campaigns.json</a>.</p>
         <div class="matrix-scroll"><table class="matrix">
           <thead><tr><th>Campaign</th><th>Platform</th><th>Python</th><th>Coverage</th><th>To do</th></tr></thead>
           <tbody>
