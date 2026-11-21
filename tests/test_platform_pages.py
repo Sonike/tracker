@@ -551,7 +551,9 @@ class BlockersSectionTests(unittest.TestCase):
     def test_table_has_an_accessible_name_and_column_header_scopes(self):
         self.build_with(self.blockers())
         section = self.read("win-arm64").split(self.HEADING, 1)[1].split("</section>", 1)[0]
-        self.assertIn('<table class="matrix" aria-label="Packages blocking the most installs on Python 3.14">', section)
+        # Named and keyboard-scrollable like the page's other tables (#184), with a caption id of its own.
+        self.assertIn("Packages blocking the most installs on Python 3.14", check_tables(self.read("win-arm64")))
+        self.assertIn('<caption id="caption-blockers" class="visually-hidden">', section)
         self.assertEqual(
             re.findall(r"<th\b[^>]*>.*?</th>", section),
             ['<th scope="col">Package</th>', '<th scope="col">Other top-500 installs blocked</th>',

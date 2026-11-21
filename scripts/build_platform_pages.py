@@ -237,8 +237,7 @@ def _blockers_section(python: str, label: str, entry: dict, page_names: set[str]
     )
     return (
         f"{heading}"
-        f'<div class="matrix-scroll"><table class="matrix" aria-label="Packages blocking the most installs on '
-        f'Python {e(python)}">'
+        f"{build_campaigns.table_open(f'Packages blocking the most installs on Python {python}', 'caption-blockers')}"
         '<thead><tr><th scope="col">Package</th><th scope="col">Other top-500 installs blocked</th>'
         '<th scope="col">For example</th></tr></thead>'
         f"<tbody>{body}</tbody></table></div>"
