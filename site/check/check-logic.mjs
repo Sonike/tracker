@@ -116,6 +116,20 @@ export function toQuery(state) {
   return q.toString().replace(/%2F/g, "/").replace(/%2C/g, ",");
 }
 
+// The Markdown for a README badge that links to the check of a repo. Only the repo goes in the link, never the ref,
+// Pythons or platforms, so a click always checks the default branch as it is that day, on the targets its CI names
+// then. `lock` is added only when the file shown (`lockfile`) isn't the one the page would pick by itself
+// (`defaultLock`, from pickLockfile()), as in a monorepo. URLSearchParams encodes whatever could end the Markdown
+// link early: a space, a quote or a bracket in a path.
+export const BADGE_URL = "https://wheelgap.github.io/tracker/check/badge.svg";
+export const CHECK_URL = "https://wheelgap.github.io/tracker/check/";
+export function badgeMarkdown(repo, lockfile, defaultLock) {
+  const q = new URLSearchParams();
+  q.set("repo", `${repo.owner}/${repo.name}`);
+  if (lockfile && lockfile !== defaultLock) q.set("lock", lockfile);
+  return `[![Check wheels](${BADGE_URL})](${CHECK_URL}?${q.toString().replace(/%2F/g, "/")})`;
+}
+
 export function fromQuery(search) {
   const q = new URLSearchParams(search);
   const repoText = q.get("repo");
