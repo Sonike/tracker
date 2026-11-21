@@ -669,9 +669,10 @@ function renderPaginationControls(totalItems) {
     if (totalPages <= 1) return "";
     let btns = [];
 
-    // First & Prev
-    btns.push(`<button type="button" class="page-btn" data-page="1" ${state.currentPage === 1 ? "disabled" : ""} title="First page">⏮</button>`);
-    btns.push(`<button type="button" class="page-btn" data-page="${state.currentPage - 1}" ${state.currentPage === 1 ? "disabled" : ""} title="Previous page">◀</button>`);
+    // First & Prev. The name is the aria-label: a button is named by its content before its title, and the
+    // content here is a glyph a screen reader would read as "black right-pointing triangle".
+    btns.push(`<button type="button" class="page-btn" data-page="1" ${state.currentPage === 1 ? "disabled" : ""} aria-label="First page" title="First page"><span aria-hidden="true">⏮</span></button>`);
+    btns.push(`<button type="button" class="page-btn" data-page="${state.currentPage - 1}" ${state.currentPage === 1 ? "disabled" : ""} aria-label="Previous page" title="Previous page"><span aria-hidden="true">◀</span></button>`);
 
     // Visible window of page pills
     let pages = [];
@@ -692,13 +693,13 @@ function renderPaginationControls(totalItems) {
         btns.push(`<span class="page-ellipsis">…</span>`);
       } else {
         const isActive = p === state.currentPage;
-        btns.push(`<button type="button" class="page-btn${isActive ? " active" : ""}" data-page="${p}" aria-current="${isActive ? "page" : "false"}">${p}</button>`);
+        btns.push(`<button type="button" class="page-btn${isActive ? " active" : ""}" aria-label="Page ${p}" data-page="${p}" aria-current="${isActive ? "page" : "false"}">${p}</button>`);
       }
     }
 
     // Next & Last
-    btns.push(`<button type="button" class="page-btn" data-page="${state.currentPage + 1}" ${state.currentPage === totalPages ? "disabled" : ""} title="Next page">▶</button>`);
-    btns.push(`<button type="button" class="page-btn" data-page="${totalPages}" ${state.currentPage === totalPages ? "disabled" : ""} title="Last page">⏭</button>`);
+    btns.push(`<button type="button" class="page-btn" data-page="${state.currentPage + 1}" ${state.currentPage === totalPages ? "disabled" : ""} aria-label="Next page" title="Next page"><span aria-hidden="true">▶</span></button>`);
+    btns.push(`<button type="button" class="page-btn" data-page="${totalPages}" ${state.currentPage === totalPages ? "disabled" : ""} aria-label="Last page" title="Last page"><span aria-hidden="true">⏭</span></button>`);
 
     return btns.join("");
   };
@@ -758,7 +759,7 @@ function renderGaps() {
       <td style="text-align:right" class="pkg-downloads" title="${esc(fmt(p.downloads))} downloads">${formatDownloads(p.downloads)}</td>
       <td style="text-align:right;white-space:nowrap">
         <a href="${pypiUrl}" target="_blank" rel="noopener" class="table-ext-link" title="Open package release on PyPI">PyPI ↗</a>
-        <button type="button" class="row-expand-btn" data-pkg="${esc(p.name)}" aria-label="Toggle details">${isExpanded ? "▲" : "▼"}</button>
+        <button type="button" class="row-expand-btn" data-pkg="${esc(p.name)}" aria-label="Details for ${esc(p.name)}" aria-expanded="${isExpanded}"><span aria-hidden="true">${isExpanded ? "▲" : "▼"}</span></button>
       </td>
     </tr>`;
 
@@ -1390,25 +1391,22 @@ function initTheme() {
   const prefersDark = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches;
   const isDark = stored ? stored === "dark" : prefersDark;
 
-  if (isDark) {
-    document.documentElement.setAttribute("data-theme", "dark");
-    if ($("theme-icon-sun")) $("theme-icon-sun").style.display = "none";
-    if ($("theme-icon-moon")) $("theme-icon-moon").style.display = "block";
-  } else {
-    document.documentElement.setAttribute("data-theme", "light");
-    if ($("theme-icon-sun")) $("theme-icon-sun").style.display = "block";
-    if ($("theme-icon-moon")) $("theme-icon-moon").style.display = "none";
-  }
+  // The toggle's name stays "Dark theme"; aria-pressed says whether it is on.
+  const apply = (dark) => {
+    document.documentElement.setAttribute("data-theme", dark ? "dark" : "light");
+    if ($("theme-icon-sun")) $("theme-icon-sun").style.display = dark ? "none" : "block";
+    if ($("theme-icon-moon")) $("theme-icon-moon").style.display = dark ? "block" : "none";
+    $("theme-toggle")?.setAttribute("aria-pressed", String(dark));
+  };
+  apply(isDark);
 
   $("theme-toggle")?.addEventListener("click", () => {
     const cur = document.documentElement.getAttribute("data-theme");
     const next = cur === "dark" ? "light" : "dark";
-    document.documentElement.setAttribute("data-theme", next);
+    apply(next === "dark");
     try {
       localStorage.setItem("wheelgap-theme", next);
     } catch {}
-    if ($("theme-icon-sun")) $("theme-icon-sun").style.display = next === "dark" ? "none" : "block";
-    if ($("theme-icon-moon")) $("theme-icon-moon").style.display = next === "dark" ? "block" : "none";
   });
 }
 

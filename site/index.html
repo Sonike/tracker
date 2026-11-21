@@ -99,7 +99,7 @@
           <span class="action-label">Export</span>
         </button>
 
-        <button class="action-btn" id="theme-toggle" type="button" title="Toggle dark/light theme" aria-label="Toggle theme">
+        <button class="action-btn" id="theme-toggle" type="button" title="Toggle dark/light theme" aria-label="Dark theme" aria-pressed="false">
           <svg id="theme-icon-sun" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
             <circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>
           </svg>
@@ -203,7 +203,7 @@
       <section class="panel-card omni-panel" id="omni-checker" aria-labelledby="omni-title">
         <div class="omni-header">
           <div class="omni-title-wrap">
-            <span class="omni-badge">⚡ Instant Checker</span>
+            <span class="omni-badge"><span aria-hidden="true">⚡</span> Instant Checker</span>
             <h2 id="omni-title" class="omni-title">Package Compatibility</h2>
           </div>
 
@@ -214,7 +214,7 @@
 
           <div class="omni-header-actions">
             <button type="button" class="omni-toggle-btn" id="omni-toggle-btn" aria-expanded="true" title="Minimize or expand instant checker controls">
-              <span id="omni-toggle-icon">▲</span> <span id="omni-toggle-text">Minimize</span>
+              <span id="omni-toggle-icon" aria-hidden="true">▲</span> <span id="omni-toggle-text">Minimize</span>
             </button>
           </div>
         </div>
@@ -502,21 +502,21 @@
         <p class="modal-desc">Download current wheelgap scan data for your CI/CD pipelines, compliance reports, or architecture audits.</p>
         <div class="export-options">
           <button class="export-tile" id="btn-export-csv" type="button">
-            <span class="tile-icon">📊</span>
+            <span class="tile-icon" aria-hidden="true">📊</span>
             <div class="tile-content">
               <strong>Export Filtered Gap View (CSV)</strong>
               <span>Current platform, version, and filter view as a clean spreadsheet</span>
             </div>
           </button>
           <button class="export-tile" id="btn-export-json" type="button">
-            <span class="tile-icon">📄</span>
+            <span class="tile-icon" aria-hidden="true">📄</span>
             <div class="tile-content">
               <strong>Export Filtered Gap View (JSON)</strong>
               <span>Clean JSON formatted for automation or scripting</span>
             </div>
           </button>
           <a class="export-tile" id="export-full-csv" href="data/coverage.csv" download>
-            <span class="tile-icon">🌐</span>
+            <span class="tile-icon" aria-hidden="true">🌐</span>
             <div class="tile-content">
               <strong>Download Full Coverage CSV</strong>
               <span>Every package across every target (full dataset)</span>
