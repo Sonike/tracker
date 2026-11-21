@@ -2,6 +2,7 @@
 
 import json
 import re
+import tempfile
 import unittest
 from html.parser import HTMLParser
 from pathlib import Path
@@ -12,12 +13,13 @@ PAGES = {"site/index.html": BASE, "site/check/index.html": f"{BASE}check/"}
 
 
 class Head(HTMLParser):
-    """Collects the <meta property>, <link rel="canonical"> and JSON-LD blocks of a page."""
+    """Collects the <meta property>, <link rel="canonical">, <link rel="alternate"> and JSON-LD blocks of a page."""
 
     def __init__(self):
         super().__init__()
         self.meta: dict[str, str] = {}
         self.canonical: list[str] = []
+        self.alternate: list[dict[str, str]] = []
         self.json_ld: list[str] = []
         self._in_ld = False
 
@@ -27,6 +29,8 @@ class Head(HTMLParser):
             self.meta[a["property"]] = a.get("content", "")
         elif tag == "link" and a.get("rel") == "canonical":
             self.canonical.append(a.get("href", ""))
+        elif tag == "link" and a.get("rel") == "alternate":
+            self.alternate.append({k: v for k, v in a.items() if k != "rel"})
         elif tag == "script" and a.get("type") == "application/ld+json":
             self._in_ld = True
             self.json_ld.append("")
@@ -100,6 +104,30 @@ class SiteMetadataTests(unittest.TestCase):
                 self.assertEqual(page.meta.get("og:image:width"), "1280")
                 self.assertEqual(page.meta.get("og:image:height"), "640")
                 self.assertTrue(page.meta.get("og:image:alt"))
+
+    def test_home_page_advertises_both_atom_feeds(self):
+        self.assertEqual(head("site/index.html").alternate, [
+            {"type": "application/atom+xml", "title": "New wheels", "href": "new.xml"},
+            {"type": "application/atom+xml", "title": "Dropped platforms", "href": "drops.xml"},
+        ])
+
+    def test_each_feed_link_is_a_file_the_publish_step_writes(self):
+        from scripts import build_drops, build_new_wheels
+
+        with tempfile.TemporaryDirectory() as temp:
+            site = Path(temp) / "_site"
+            site.mkdir()
+            coverage = Path(temp) / "coverage.json"
+            coverage.write_text('{"packages": []}', encoding="utf-8")
+            wrote = {}
+            for builder in (build_new_wheels, build_drops):
+                before = {p.relative_to(site).as_posix() for p in site.rglob("*.xml")}
+                builder.build(Path(temp) / "missing.json", coverage, site)
+                wrote[builder] = {p.relative_to(site).as_posix() for p in site.rglob("*.xml")} - before
+        links = {a["title"]: a["href"] for a in head("site/index.html").alternate}
+        self.assertIn(links["New wheels"], wrote[build_new_wheels])  # the home page is at the site's root
+        self.assertIn(links["Dropped platforms"], wrote[build_drops])
+        self.assertNotIn("sitemap.xml", set(links.values()))
 
     def test_static_pages_site_nav_in_sync_with_helper(self):
         from scripts import build_campaigns
