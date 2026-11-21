@@ -1,10 +1,11 @@
 """Publish crawlable, JavaScript-free pages of the most-wanted missing wheels by platform.
 
     python3 scripts/build_platform_pages.py data/coverage.json _site/data/most-wanted.json _site campaigns.toml \
-        --history data/history.json
+        --history data/history.json --blockers _site/data/blockers.json
 
 Runs after the package and campaign pages so all platform URLs can be added to the same sitemap.
 With --history, each platform page also says how its share has moved over time (#169).
+With --blockers (build_blockers.py's output), each also lists the packages blocking the most installs (#183).
 """
 
 from __future__ import annotations
@@ -151,6 +152,95 @@ def _over_time_table(picked: list[tuple[str, dict, bool]], pyodide: bool) -> str
     )
 
 
+BLOCKERS_SHOWN = 10
+
+
+def read_blockers(path: Path, generated: object) -> dict[str, dict] | None:
+    """blockers.json's targets as {label: {"checked": int, "blockers": [{name, count, examples}, ...]}}, or
+    None (with a warning) when the file is missing, isn't JSON, has another shape, or is from another scan.
+
+    It's an extra on the page, so nothing here stops the build. A target whose entry has another shape is
+    left out with a warning; a blocker that isn't an object, or lacks a string `name`, an int `count` or a
+    list `examples`, is skipped."""
+
+    def warn(why: str) -> None:
+        print(f"::warning::build_platform_pages: {why}, so the platform pages have no blockers section")
+
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        warn(f"can't read {path.name}")
+        return None
+    targets = data.get("targets") if isinstance(data, dict) else None
+    if not isinstance(targets, dict):
+        warn(f"{path.name} isn't {{\"targets\": {{...}}}}")
+        return None
+    if data.get("generated") != generated:
+        warn(f"{path.name} is not from the same scan as coverage.json")
+        return None
+
+    def is_int(value: object) -> bool:
+        return isinstance(value, int) and not isinstance(value, bool)
+
+    kept: dict[str, dict] = {}
+    for label, entry in targets.items():
+        if not isinstance(entry, dict) or not is_int(entry.get("checked")) or not isinstance(entry.get("blockers"), list):
+            continue
+        blockers = [
+            {"name": b["name"], "count": b["count"], "examples": [x for x in b["examples"] if isinstance(x, str)]}
+            for b in entry["blockers"]
+            if isinstance(b, dict)
+            and isinstance(b.get("name"), str)
+            and is_int(b.get("count"))
+            and isinstance(b.get("examples"), list)
+        ]
+        kept[label] = {"checked": entry["checked"], "blockers": blockers}
+    if len(kept) < len(targets):
+        skipped = len(targets) - len(kept)
+        print(
+            f"::warning::build_platform_pages: {path.name} has {skipped} target "
+            f"{'entry' if skipped == 1 else 'entries'} of another shape, left out of the platform pages"
+        )
+    return kept
+
+
+def _blockers_section(python: str, label: str, entry: dict, page_names: set[str]) -> str:
+    """The "Blocking the most installs" section for one target's blockers.json entry ("" with no trees checked).
+    A name links to its package page only when the scan has that package, so the link can't be dead."""
+    e = html.escape
+    checked = entry["checked"]
+    if checked <= 0:
+        return ""
+    source = 'From <a href="../../data/blockers.json">data/blockers.json</a>.'
+
+    def linked(name: str) -> str:
+        slug = build_pages.canonical(name)
+        if build_pages.SAFE_NAME.fullmatch(slug) and slug in page_names:
+            return f'<a href="../../p/{e(slug)}/">{e(name)}</a>'
+        return e(name)
+
+    heading = f"<section><h2>Blocking the most installs on Python {e(python)}</h2>"
+    if not entry["blockers"]:
+        return (
+            f"{heading}<p class=\"note\">On Python {e(python)}, none of the {checked:,} top-500 packages checked "
+            f"here is held back by another package's missing wheel. {source}</p></section>"
+        )
+    body = "".join(
+        f"<tr><td>{linked(b['name'])}</td><td>{b['count']:,}</td>"
+        f"<td>{', '.join(linked(x) for x in b['examples'])}</td></tr>"
+        for b in entry["blockers"][:BLOCKERS_SHOWN]
+    )
+    return (
+        f"{heading}"
+        '<div class="matrix-scroll"><table class="matrix">'
+        "<thead><tr><th>Package</th><th>Other top-500 installs blocked</th><th>For example</th></tr></thead>"
+        f"<tbody>{body}</tbody></table></div>"
+        f'<p class="note">Each count is how many other top-500 packages can\'t install from wheels alone on '
+        f"{e(label)} because this package, somewhere in their dependency tree, has no wheel there. "
+        f"{checked:,} trees were checked. {source}</p></section>"
+    )
+
+
 def _index_table(rows: list) -> str:
     """The platform index: each platform's share of the top packages with a wheel, lowest first."""
     e = html.escape
@@ -175,9 +265,12 @@ def build(
     site: Path,
     config_path: Path | None = None,
     history_path: Path | None = None,
+    blockers_path: Path | None = None,
 ) -> int:
     """Write the platform pages; with history_path (data/history.json), each also gets an "Over time"
-    section and its change over 30 nights in the lede. Without it, or with an empty history, neither."""
+    section and its change over 30 nights in the lede. Without it, or with an empty history, neither.
+    With blockers_path (build_blockers.py's blockers.json), each platform with an entry there gets a
+    "Blocking the most installs" section; a file that can't be used warns and leaves the section out."""
     scan = json.loads(coverage_path.read_text(encoding="utf-8"))
     history = update_history.read_history(history_path) if history_path is not None else []
     wanted = json.loads(wanted_path.read_text(encoding="utf-8"))
@@ -192,6 +285,9 @@ def build(
     meta = f'<p class="meta">From the wheelgap {e(str(scan["wheelgap"]))} scan of {e(str(scan["generated"])[:10])}.</p>'
     campaigns = build_campaigns.load_campaigns(config_path) if config_path is not None and config_path.exists() else []
     newest = build_pages.newest_non_free_threaded(targets)
+    blockers = (read_blockers(blockers_path, scan.get("generated")) if blockers_path is not None else None) or {}
+    # The names build_pages.py writes a page for, so a blocker outside the scan isn't linked.
+    page_names = {build_pages.canonical(p["name"]) for p in packages if isinstance(p.get("name"), str)}
     # Declared lab coverage. A label's platform part, not TARGETS[...]["platform"] (that's the interpreter's platform).
     lab_platforms = {label.split(" ", 1)[1] for label in build_lab.TARGETS}
     out = site / "platforms"
@@ -235,6 +331,12 @@ def build(
             f"<section><h2>Most-wanted wheels for Python {e(python)}</h2>{table}{extras}"
             '<p><a href="../../">Search every package</a></p></section>'
         )
+        # Whole-tree installs are only checked for some Pythons: the newest one with an entry for this platform.
+        checked_targets = [t for t in platform_targets if t["label"] in blockers]
+        if checked_targets:
+            blockers_python = build_pages.newest_non_free_threaded(checked_targets)
+            blockers_label = next(t["label"] for t in checked_targets if t["python"] == blockers_python)
+            content += _blockers_section(blockers_python, blockers_label, blockers[blockers_label], page_names)
         picked = over_time(trend)
         if picked:
             content += (
@@ -285,13 +387,15 @@ def build(
 
 if __name__ == "__main__":
     args = sys.argv[1:]
-    history_arg = None
-    if "--history" in args:
-        at = args.index("--history")
-        if at + 1 >= len(args):
-            sys.exit("build_platform_pages: --history needs a path")
-        history_arg = Path(args[at + 1])
-        del args[at : at + 2]
+    options: dict[str, Path | None] = {"--history": None, "--blockers": None}
+    for option in options:
+        if option in args:
+            at = args.index(option)
+            if at + 1 >= len(args):
+                sys.exit(f"build_platform_pages: {option} needs a path")
+            options[option] = Path(args[at + 1])
+            del args[at : at + 2]
     coverage, wanted, site = (Path(p) for p in args[0:3])
     config = Path(args[3]) if len(args) > 3 else None
-    print(f"platforms: {build(coverage, wanted, site, config, history_arg)} pages in {site / 'platforms'}")
+    count = build(coverage, wanted, site, config, options["--history"], options["--blockers"])
+    print(f"platforms: {count} pages in {site / 'platforms'}")

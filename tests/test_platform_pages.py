@@ -1,7 +1,9 @@
 """Offline regression tests for crawlable platform pages (#111)."""
 
+import contextlib
 import datetime
 import html
+import io
 import json
 import re
 import subprocess
@@ -375,6 +377,170 @@ class OverTimeTests(unittest.TestCase):
         subprocess.run([sys.executable, str(script), str(self.coverage), str(self.index), str(self.site),
                         "--history", str(history)], check=True, capture_output=True)
         self.assertIn("up 1.0 points since 2026-09-01", self.read("win-arm64"))
+
+
+class BlockersSectionTests(unittest.TestCase):
+    """The "Blocking the most installs" section from build_blockers.py's blockers.json (#183).
+    Uses PlatformPageTests' fixture without rerunning its tests."""
+
+    setUp = PlatformPageTests.setUp
+    read = PlatformPageTests.read
+    HEADING = "<h2>Blocking the most installs on Python 3.14</h2>"
+
+    def blockers(self):
+        """Whole-tree installs are checked for 3.14 (and 3.13), not the pages' 3.15; linux-aarch64 isn't checked."""
+        for platform in ("win-arm64", "linux-x86_64"):
+            for python in ("3.14", "3.13"):
+                self.scan["targets"].append({"label": f"{python} {platform}", "python": python, "platform": platform})
+                for package in self.scan["packages"]:
+                    package["results"].append("wheel")
+        many = [{"name": f"extra{i}", "count": 1, "examples": ["sample"]} for i in range(12)]
+        return {
+            "generated": self.scan["generated"],
+            "targets": {
+                "3.14 win-arm64": {
+                    "checked": 1498,
+                    "blockers": [
+                        {"name": "Typing_Extensions", "count": 1029, "examples": ["sample", "not-scanned", "evil"]},
+                        {"name": "outside<b>", "count": 9, "examples": ["bad<script>", 5]},
+                        "cryptography",
+                        {"name": "no-count", "examples": []},
+                        {"name": "bool-count", "count": True, "examples": []},
+                        {"name": "no-examples", "count": 3},
+                        {"count": 3, "examples": []},
+                        *many,
+                    ],
+                },
+                "3.13 win-arm64": {"checked": 7, "blockers": [{"name": "older-python", "count": 7, "examples": []}]},
+                "3.14t win-arm64": {"checked": 7, "blockers": [{"name": "free-threaded", "count": 7, "examples": []}]},
+                "3.14 linux-x86_64": {"checked": 497, "blockers": []},
+                "3.14 pyodide": {"checked": 0, "blockers": []},
+            },
+        }
+
+    def build_with(self, blockers, *, raw=None, write=True):
+        path = self.root / "blockers.json"
+        if write:
+            path.write_text(json.dumps(blockers) if raw is None else raw, encoding="utf-8")
+        self.coverage.write_text(json.dumps(self.scan), encoding="utf-8")
+        self.index.write_text(json.dumps(self.wanted), encoding="utf-8")
+        printed = io.StringIO()
+        with contextlib.redirect_stdout(printed):
+            count = build_platform_pages.build(self.coverage, self.index, self.site, None, None, path)
+        self.assertEqual(count, 4)  # the pages are always built
+        return printed.getvalue()
+
+    def test_section_lists_blockers_with_counts_examples_and_links(self):
+        self.assertEqual(self.build_with(self.blockers()), "")
+        win = self.read("win-arm64")
+        section = win.split(self.HEADING, 1)[1].split("</section>", 1)[0]
+        self.assertIn("Most-wanted wheels for Python 3.15", win)  # the page's own Python is still 3.15
+        rows = re.findall(r"<tr><td>(.*?)</td><td>(.*?)</td><td>(.*?)</td></tr>", section)
+        # Up to 10, in the file's order; the entries that aren't usable are skipped.
+        self.assertEqual(len(rows), 10)
+        self.assertEqual(
+            rows[0],
+            (
+                '<a href="../../p/typing-extensions/">Typing_Extensions</a>',
+                "1,029",
+                '<a href="../../p/sample/">sample</a>, not-scanned, <a href="../../p/evil/">evil</a>',
+            ),
+        )
+        # A name the scan has no page for is shown, escaped, without a link.
+        self.assertEqual(rows[1], ("outside&lt;b&gt;", "9", "bad&lt;script&gt;"))
+        self.assertEqual([r[0] for r in rows[2:]], [f"extra{i}" for i in range(8)])
+        for skipped in ("cryptography", "no-count", "bool-count", "no-examples", "older-python", "free-threaded"):
+            self.assertNotIn(skipped, win)
+        self.assertIn("on 3.14 win-arm64 because", section)
+        self.assertIn("1,498 trees were checked.", section)
+        self.assertIn('<a href="../../data/blockers.json">data/blockers.json</a>', section)
+        self.assertNotIn("<script", win)
+
+    def test_none_blocked_line(self):
+        self.build_with(self.blockers())
+        linux = self.read("linux-x86_64")
+        section = linux.split(self.HEADING, 1)[1].split("</section>", 1)[0]
+        self.assertIn(
+            "On Python 3.14, none of the 497 top-500 packages checked here is held back by another "
+            "package's missing wheel.",
+            section,
+        )
+        self.assertNotIn("<table", section)
+
+    def test_platform_without_an_entry_or_checked_trees_has_no_section(self):
+        self.build_with(self.blockers())
+        self.assertNotIn("Blocking the most installs", self.read("linux-aarch64"))  # no entry
+        self.assertNotIn("Blocking the most installs", self.read("pyodide"))  # nothing checked
+
+    def test_without_blockers_the_pages_are_unchanged(self):
+        self.blockers()
+        self.coverage.write_text(json.dumps(self.scan), encoding="utf-8")
+        self.index.write_text(json.dumps(self.wanted), encoding="utf-8")
+        build_platform_pages.build(self.coverage, self.index, self.site)
+        before = {p: self.read(p) for p in ("win-arm64", "linux-x86_64", "linux-aarch64", "pyodide")}
+        self.assertIn("warning", self.build_with(None, write=False))
+        self.assertEqual(before, {p: self.read(p) for p in before})
+
+    def test_unusable_file_warns_and_leaves_the_section_out(self):
+        good = self.blockers()
+        cases = {
+            "missing file": {"write": False},
+            "invalid JSON": {"raw": "{not json"},
+            "not an object": {"raw": "[]"},
+            "targets not an object": {"raw": json.dumps({"generated": good["generated"], "targets": []})},
+            "another scan": {"raw": json.dumps({**good, "generated": "2026-11-16T03:00:00+00:00"})},
+        }
+        for label, how in cases.items():
+            with self.subTest(label):
+                printed = self.build_with(None, **how)
+                self.assertEqual(printed.count("::warning::build_platform_pages: "), 1)
+                self.assertIn("so the platform pages have no blockers section", printed)
+                for platform in ("win-arm64", "linux-x86_64"):
+                    self.assertNotIn("Blocking the most installs", self.read(platform))
+                    self.assertIn("Most-wanted wheels for Python 3.15", self.read(platform))
+
+    def test_target_entry_of_another_shape_is_left_out_with_a_warning(self):
+        blockers = self.blockers()
+        for label, entry in (
+            ("3.14 win-arm64", ["cryptography"]),
+            ("3.13 win-arm64", {"checked": "7", "blockers": []}),
+            ("3.14t win-arm64", {"checked": 7, "blockers": {}}),
+        ):
+            blockers["targets"][label] = entry
+        printed = self.build_with(blockers)
+        self.assertEqual(printed.count("::warning::"), 1)
+        self.assertIn("blockers.json has 3 target entries of another shape", printed)
+        self.assertNotIn("Blocking the most installs", self.read("win-arm64"))
+        self.assertIn(self.HEADING, self.read("linux-x86_64"))
+
+    def test_command_line_takes_blockers_with_history_in_either_order(self):
+        path = self.root / "blockers.json"
+        path.write_text(json.dumps(self.blockers()), encoding="utf-8")
+        self.coverage.write_text(json.dumps(self.scan), encoding="utf-8")
+        self.index.write_text(json.dumps(self.wanted), encoding="utf-8")
+        history = self.root / "history.json"
+        history.write_text(json.dumps([night(0, 500), night(1, 510)]), encoding="utf-8")
+        script = Path(__file__).resolve().parent.parent / "scripts" / "build_platform_pages.py"
+        subprocess.run([sys.executable, str(script), str(self.coverage), str(self.index), str(self.site),
+                        "--blockers", str(path), "--history", str(history)], check=True, capture_output=True)
+        win = self.read("win-arm64")
+        self.assertIn(self.HEADING, win)
+        self.assertIn("up 1.0 points since 2026-09-01", win)
+        missing = subprocess.run([sys.executable, str(script), str(self.coverage), str(self.index), str(self.site),
+                                  "--blockers"], capture_output=True, text=True)
+        self.assertIn("--blockers needs a path", missing.stderr)
+        self.assertNotEqual(missing.returncode, 0)
+
+    def test_publish_step_builds_blockers_before_the_platform_pages(self):
+        root = Path(__file__).resolve().parent.parent
+        for name in (".github/workflows/scan.yml", "README.md"):
+            with self.subTest(name):
+                text = (root / name).read_text(encoding="utf-8")
+                made = text.index("python3 scripts/build_blockers.py data/coverage.json _site/data/blockers.json")
+                used = text.index("python3 scripts/build_platform_pages.py ")
+                self.assertLess(made, used)
+                line = text[used:].split("\n", 1)[0]
+                self.assertIn("--blockers _site/data/blockers.json", line)
 
 
 if __name__ == "__main__":
