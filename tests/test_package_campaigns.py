@@ -103,3 +103,39 @@ def test_package_page_follows_a_new_python_campaign(tmp_path):
     assert "On the to-do list of " + link in pages["waiting"]
     assert "Campaigns:" not in pages["never"]
     assert "Campaigns:" not in pages["ready"]
+
+
+def test_package_page_follows_a_free_threaded_campaign(tmp_path):
+    """#182: a package page agrees with a compare = "gil" campaign, as it does with a new-Python one."""
+    data = tmp_path / "data"
+    data.mkdir()
+    targets = [
+        {"label": f"{py} {pl}", "python": py, "platform": pl}
+        for py in ("3.14", "3.14t")
+        for pl in ("linux-x86_64", "musl-aarch64")
+    ]
+
+    def pkg(name, rank, results):
+        return dict(name=name, rank=rank, results=results, version="1.0", pure=False, error=None)
+
+    scan = dict(schema=1, generated="2026-11-21", wheelgap="0.9", targets=targets, packages=[
+        # A 3.14 linux-x86_64 wheel but no 3.14t one on any platform: to do. The platform rule would leave it out.
+        pkg("waiting", 1, ["wheel", "wheel", "source", "source"]),
+        # No linux-x86_64 wheel for 3.14 either: not a free-threading gap. The platform rule would ask about it.
+        pkg("never", 2, ["source", "wheel", "source", "wheel"]),
+        pkg("ready", 3, ["wheel"] * 4),
+    ])
+    coverage = data / "coverage.json"
+    coverage.write_text(json.dumps(scan))
+    (tmp_path / "campaigns.toml").write_text(
+        '[[campaign]]\nid="ft"\ntitle="Free-threaded 3.14"\nplatform="linux-x86_64"\ntop=3\n'
+        'start="2026-11-21"\npython="3.14t"\ncompare="gil"\n'
+    )
+    site = tmp_path / "_site"
+    notes = tmp_path / "notes"
+    notes.mkdir()
+    assert build_pages.build(coverage, site, notes, root=tmp_path) == 3
+    pages = {p: (site / "p" / p / "index.html").read_text() for p in ("waiting", "never", "ready")}
+    assert 'On the to-do list of <a href="../../campaigns/ft/">Free-threaded 3.14</a>' in pages["waiting"]
+    assert "Campaigns:" not in pages["never"]
+    assert "Campaigns:" not in pages["ready"]

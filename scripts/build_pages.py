@@ -194,8 +194,12 @@ def install_gaps(lead: str, checked: list[tuple[str, dict]]) -> str:
                 names = names[:most] + [f"{len(names) - most} more"]
             if names:
                 parts.append(verb.format(join_names(names)))
-        if not parts:  # a result without blockers; shouldn't happen, but say the status
-            parts.append("builds from source" if result["status"] == "source" else "can't install")
+        # A `missing` result with no `missing` blocker left (none listed, or clean_install dropped it): still say
+        # it can't install, so a kept `source` blocker alone never reads as "it installs after a build".
+        if result["status"] == "missing" and not any(b["status"] == "missing" for b in result["blockers"]):
+            parts.append("can't install")
+        elif not parts:  # a `source` result without blockers; shouldn't happen, but say the status
+            parts.append("builds from source")
         return " and ".join(parts)
 
     for most in (None, 2, 1):
@@ -348,8 +352,62 @@ def notes_html(notes: list[dict], name: str, gaps: list[str], today: str, exists
     return f'    <section class="notes">\n      <h2>Notes</h2>\n{intro}{"".join(cards)}{add}    </section>\n'
 
 
+def clean_way_out(way_out: object) -> tuple[dict[str, dict], int]:
+    """The usable `way_out` hints and how many entries were dropped.
+
+    scan_way_out.py writes them after check_scan.py has run, so nothing has checked their shape: a hint is
+    kept only when it's an object with a string `release` and a `kind` of "older" or "newer". Anything else,
+    including a `way_out` that isn't an object, counts as no hint rather than stopping the deploy."""
+    if not isinstance(way_out, dict):
+        return {}, 1
+    kept = {
+        label: hint
+        for label, hint in way_out.items()
+        if isinstance(hint, dict) and isinstance(hint.get("release"), str) and hint.get("kind") in ("older", "newer")
+    }
+    return kept, len(way_out) - len(kept)
+
+
+def clean_install(install: object) -> tuple[dict[str, dict], int]:
+    """The usable `install` results and how many entries (targets or blockers) were dropped.
+
+    Like `way_out`, scan_install.py writes them unchecked. A target whose result isn't an object is left out.
+    A missing or non-list `blockers` reads as [], and a status that isn't a string as `not_checked`. A blocker
+    is kept only when it's an object with a string `name`, a `status` of `source` or `missing` and a `via`
+    list of strings; a `version` that isn't a string reads as None."""
+    if not isinstance(install, dict):
+        return {}, 1
+    kept: dict[str, dict] = {}
+    dropped = 0
+    for target, result in install.items():
+        if not isinstance(result, dict):
+            dropped += 1
+            continue
+        status, raw = result.get("status"), result.get("blockers")
+        if not isinstance(status, str):
+            status, dropped = "not_checked", dropped + 1
+        if not isinstance(raw, list):
+            raw, dropped = [], dropped + 1
+        blockers = []
+        for item in raw:
+            if (
+                isinstance(item, dict)
+                and isinstance(item.get("name"), str)
+                and item.get("status") in GAP
+                and isinstance(item.get("via"), list)
+                and all(isinstance(name, str) for name in item["via"])
+            ):
+                version = item.get("version")
+                blockers.append({**item, "version": version if isinstance(version, str) else None})
+            else:
+                dropped += 1
+        kept[target] = {**result, "status": status, "blockers": blockers}
+    return kept, dropped
+
+
 def install_html(install: dict, page_names: set[str] | None = None, own_name: str = "") -> str:
-    """Show the install result and dependency blockers for each checked target."""
+    """Show the install result and dependency blockers for each checked target (see clean_install)."""
+    install, _ = clean_install(install)
     if not install:
         return ""
     e = html.escape
@@ -520,6 +578,7 @@ def page(
     changes: list[dict] | None = None,
     page_names: set[str] | None = None,
     gap_wheels: set[tuple[str, str, str]] | None = None,
+    dropped: list[int] | None = None,
 ) -> str:
     """The package's page. notes are its notes from notes/ (stale ones are left out here);
     note_file says whether notes/<name>.toml exists, so "Add a note" opens the editor instead.
@@ -527,10 +586,18 @@ def page(
     campaigns pairs each membership status with its loaded campaign. tree_badge says whether
     build_badges writes badge/<name>-tree.json, so the page shows its snippet too.
     builds holds the package's build lab results; changes is its entry from changes_by_package.
-    gap_wheels holds (canonical name, version, target) of the published gap wheels (read_gap_wheels)."""
+    gap_wheels holds (canonical name, version, target) of the published gap wheels (read_gap_wheels).
+    dropped, when given, collects how many malformed `way_out` and `install` entries the page left out."""
     found = found or {}
     bundled = pyodide_locks.bundled(package, scan["targets"], found)
-    way_out = package.get("way_out", {})
+    way_out, bad = clean_way_out(package.get("way_out", {}))
+    if "install" in package:
+        # Cleaned once here, so the summary (describe_install) and the install table read the same results.
+        install, bad_install = clean_install(package["install"])
+        package = {**package, "install": install}
+        bad += bad_install
+    if dropped is not None and bad:
+        dropped.append(bad)
     targets = scan["targets"]
     pys = list(dict.fromkeys(t["python"] for t in targets))
     platforms = [pl for pl in PLATFORM_NAMES if any(t["platform"] == pl for t in targets)]
@@ -750,6 +817,7 @@ def build(
     trees = build_badges.tree_badges(scan)
     names: list[str] = []
     seen: set[str] = set()
+    dropped: list[int] = []
     valid_packages: list[tuple[str, dict]] = []
     for p in scan["packages"]:
         name = canonical(p["name"])
@@ -776,8 +844,15 @@ def build(
             changes=pkg_changes.get(name, []),
             page_names=seen,
             gap_wheels=gap_wheels,
+            dropped=dropped,
         )
         (out / "index.html").write_text(text, encoding="utf-8")
+    if dropped:
+        print(
+            f"::warning::build_pages: left out {sum(dropped)} malformed way_out or install "
+            f"{'entry' if sum(dropped) == 1 else 'entries'} on {len(dropped)} package "
+            f"page{'s' if len(dropped) != 1 else ''}"
+        )
     urls = [BASE_URL, f"{BASE_URL}check/"] + [f"{BASE_URL}p/{name}/" for name in names]
     sitemap = "".join(f"  <url><loc>{html.escape(u)}</loc></url>\n" for u in urls)
     (site / "sitemap.xml").write_text(
