@@ -1339,3 +1339,86 @@ test("modified arrows stay the input's, Tab closes the lookup list, and a press 
   keyOn(get, "cmd-input", "ArrowDown");
   assert.equal(get("cmd-input").attrs["aria-activedescendant"], "cmd-opt-1");
 });
+
+// ---------------------------------------------------------------------------------------------------------------
+// Buttons whose content is only a symbol get their name from words (#178).
+// ---------------------------------------------------------------------------------------------------------------
+const buttonNames = (html) => Array.from(html.matchAll(/<button\b[^>]*\baria-label="([^"]*)"[^>]*>(.*?)<\/button>/gs), (m) => m[1]);
+
+test("pagination buttons are named in words in both pagers, and keep their names after a page change (#178)", async () => {
+  const page = await loadTablePage();
+  run(page, "state.pageSize = '10'; renderGaps()");
+  const pages = Math.ceil(run(page, "currentGapsList().length") / 10);
+  assert.ok(pages >= 9, "enough pages for both ellipses");
+  for (const current of [1, 5]) {
+    if (current !== 1) page.get("pagination-buttons-top").handlers.click(pageClick(current));
+    const html = page.get("pagination-buttons-top").innerHTML;
+    assert.equal(page.get("pagination-buttons-bottom").innerHTML, html);
+    const middle = current === 1 ? [1, 2, 3, 4, 5, pages] : [1, 4, 5, 6, pages];
+    assert.deepEqual(buttonNames(html), ["First page", "Previous page", ...middle.map((n) => `Page ${n}`), "Next page", "Last page"]);
+    assert.equal((html.match(/<button\b/g) ?? []).length, buttonNames(html).length, "no button without a name");
+    for (const glyph of ["⏮", "◀", "▶", "⏭"]) assert.ok(html.includes(`<span aria-hidden="true">${glyph}</span>`), `${glyph} is hidden`);
+    assert.match(html, new RegExp(`aria-label="Page ${current}" data-page="${current}" aria-current="page"`));
+  }
+});
+
+test("each row's details button names its package and says whether its details are open (#178)", async () => {
+  const clicks = []; // the rows' buttons are handled by a click listener on the document
+  const page = await loadPage("", null, null, (context) => {
+    context.document.addEventListener = (type, fn) => { if (type === "click") clicks.push(fn); };
+  });
+  const click = async (event) => { for (const fn of clicks) await fn(event); };
+  const [first, second] = run(page, "currentGapsList().slice(0, 2).map((p) => p.name)");
+  const button = (name) => page.get("gaps").innerHTML.match(new RegExp(`<button type="button" class="row-expand-btn" data-pkg="${name}"[^>]*>.*?</button>`, "s"))[0];
+  const expandClick = (name) => ({ preventDefault() {}, target: { closest: (sel) => (sel === ".row-expand-btn" ? { dataset: { pkg: name } } : null) } });
+  for (const name of [first, second]) {
+    assert.match(button(name), new RegExp(`aria-label="Details for ${name}" aria-expanded="false"><span aria-hidden="true">▼</span></button>$`));
+  }
+  await click(expandClick(first));
+  assert.match(button(first), /aria-expanded="true"><span aria-hidden="true">▲<\/span>/);
+  assert.match(button(second), /aria-expanded="false"/);
+  await click(expandClick(first));
+  assert.match(button(first), /aria-expanded="false"/);
+  assert.doesNotMatch(page.get("gaps").innerHTML, /Toggle details/);
+});
+
+test("a hostile package name is escaped in its details button's name (#178)", async () => {
+  const page = await loadTablePage();
+  run(page, `currentGapsList()[0].name = '"><img src=x>'; renderGaps()`);
+  assert.ok(page.get("gaps").innerHTML.includes('aria-label="Details for &quot;&gt;&lt;img src=x&gt;"'));
+});
+
+for (const [startsDark, how] of [[false, "the stored light theme"], [true, "the stored dark theme"], [true, "the system's dark preference"]]) {
+  test(`the theme toggle's aria-pressed follows ${how}, on load and after each click (#178)`, async () => {
+    let theme = null;
+    const page = await loadPage("", null, null, (context, get) => {
+      if (how.startsWith("the stored")) context.localStorage.getItem = () => (startsDark ? "dark" : "light");
+      else context.window.matchMedia = () => ({ matches: true });
+      context.document.documentElement = { getAttribute: () => theme, setAttribute(_name, value) { theme = value; } };
+      const toggle = get("theme-toggle");
+      toggle.attrs = {};
+      toggle.setAttribute = (name, value) => { toggle.attrs[name] = String(value); };
+    });
+    const toggle = page.get("theme-toggle");
+    assert.equal(theme, startsDark ? "dark" : "light");
+    assert.equal(toggle.attrs["aria-pressed"], String(startsDark));
+    toggle.handlers.click();
+    assert.equal(theme, startsDark ? "light" : "dark");
+    assert.equal(toggle.attrs["aria-pressed"], String(!startsDark));
+    toggle.handlers.click();
+    assert.equal(toggle.attrs["aria-pressed"], String(startsDark));
+    assert.deepEqual(Object.keys(toggle.attrs), ["aria-pressed"], "the name set in index.html is left alone");
+  });
+}
+
+test("index.html hides the decorative symbols and names the theme toggle as a toggle (#178)", () => {
+  const html = fs.readFileSync(path.join(SITE, "index.html"), "utf8");
+  const icons = [...html.matchAll(/<span class="tile-icon"([^>]*)>/g)];
+  assert.equal(icons.length, 4);
+  for (const [tag, attrs] of icons) assert.match(attrs, /aria-hidden="true"/, tag);
+  assert.match(html, /<span class="omni-badge"><span aria-hidden="true">⚡<\/span> Instant Checker<\/span>/);
+  assert.match(html, /<span id="omni-toggle-icon" aria-hidden="true">/);
+  const toggle = html.match(/<button\b[^>]*\bid="theme-toggle"[^>]*>/)[0];
+  assert.match(toggle, /aria-label="Dark theme"/);
+  assert.match(toggle, /aria-pressed="false"/);
+});

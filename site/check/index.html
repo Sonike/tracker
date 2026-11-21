@@ -101,6 +101,12 @@
         <pre><code id="gap-wheels-text"></code></pre>
         <button type="button" class="action" id="copy-gap-wheels">Copy gap wheel instructions</button>
       </section>
+      <section id="badge" aria-labelledby="badge-title">
+        <h3 id="badge-title">Add a badge to your README</h3>
+        <p class="note"><img class="badge-img" src="badge.svg" alt="wheelgap: check wheels" width="146" height="20"> The badge is a fixed image and shows no result. A click runs this check on the repo's default branch as it is that day, for the platforms and Pythons its CI names.</p>
+        <pre><code id="badge-md"></code></pre>
+        <button type="button" class="action" id="copy-badge">Copy badge Markdown</button>
+      </section>
       <p>Run the same check locally or in CI:</p>
       <pre><code id="cli"></code></pre>
       <p class="note">It's the <a href="https://github.com/wheelgap/wheelgap">wheelgap</a> command line, also a <a href="https://github.com/wheelgap/wheelgap/blob/main/docs/ci.md">GitHub Action</a> and a pre-commit hook, so a new gap fails the pull request that adds it.</p>
