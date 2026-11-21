@@ -499,6 +499,27 @@ class BlockersSectionTests(unittest.TestCase):
                     self.assertNotIn("Blocking the most installs", self.read(platform))
                     self.assertIn("Most-wanted wheels for Python 3.15", self.read(platform))
 
+    def test_blockers_list_with_no_usable_entry_gives_no_section(self):
+        """Skipping every entry must not turn into the "none ... is held back" line."""
+        blockers = self.blockers()
+        blockers["targets"]["3.14 linux-x86_64"]["blockers"] = ["cryptography", {"name": "no-count", "examples": []}]
+        printed = self.build_with(blockers)
+        self.assertEqual(printed.count("::warning::"), 1)
+        self.assertIn("blockers.json has 1 target entry of another shape", printed)
+        self.assertNotIn("Blocking the most installs", self.read("linux-x86_64"))
+        self.assertNotIn("is held back", self.read("linux-x86_64"))
+        self.assertIn(self.HEADING, self.read("win-arm64"))
+
+    def test_table_has_an_accessible_name_and_column_header_scopes(self):
+        self.build_with(self.blockers())
+        section = self.read("win-arm64").split(self.HEADING, 1)[1].split("</section>", 1)[0]
+        self.assertIn('<table class="matrix" aria-label="Packages blocking the most installs on Python 3.14">', section)
+        self.assertEqual(
+            re.findall(r"<th\b[^>]*>.*?</th>", section),
+            ['<th scope="col">Package</th>', '<th scope="col">Other top-500 installs blocked</th>',
+             '<th scope="col">For example</th>'],
+        )
+
     def test_target_entry_of_another_shape_is_left_out_with_a_warning(self):
         blockers = self.blockers()
         for label, entry in (

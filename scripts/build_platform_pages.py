@@ -194,6 +194,9 @@ def read_blockers(path: Path, generated: object) -> dict[str, dict] | None:
             and is_int(b.get("count"))
             and isinstance(b.get("examples"), list)
         ]
+        if entry["blockers"] and not blockers:
+            # Nothing usable in a list that isn't empty: leaving it in would print "none is held back".
+            continue
         kept[label] = {"checked": entry["checked"], "blockers": blockers}
     if len(kept) < len(targets):
         skipped = len(targets) - len(kept)
@@ -232,8 +235,10 @@ def _blockers_section(python: str, label: str, entry: dict, page_names: set[str]
     )
     return (
         f"{heading}"
-        '<div class="matrix-scroll"><table class="matrix">'
-        "<thead><tr><th>Package</th><th>Other top-500 installs blocked</th><th>For example</th></tr></thead>"
+        f'<div class="matrix-scroll"><table class="matrix" aria-label="Packages blocking the most installs on '
+        f'Python {e(python)}">'
+        '<thead><tr><th scope="col">Package</th><th scope="col">Other top-500 installs blocked</th>'
+        '<th scope="col">For example</th></tr></thead>'
         f"<tbody>{body}</tbody></table></div>"
         f'<p class="note">Each count is how many other top-500 packages can\'t install from wheels alone on '
         f"{e(label)} because this package, somewhere in their dependency tree, has no wheel there. "
