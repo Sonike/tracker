@@ -354,6 +354,101 @@ class CampaignTests(unittest.TestCase):
         )
         self.assertEqual([item["name"] for item in todo], ["newpy"])
 
+    GIL = 'python = "3.14t"\ncompare = "gil"\n'
+
+    def add_regular_314(self):
+        """A 3.14 musl-aarch64 target beside the fixture's 3.14t one: NumPy, newpy and requests have its wheel,
+        psycopg2 doesn't. On 3.14t only requests has one."""
+        self.scan["targets"].append({"label": "3.14 musl-aarch64", "python": "3.14", "platform": "musl-aarch64"})
+        for package, result in zip(self.scan["packages"], ["wheel", "source", "wheel", "wheel", "unknown", "wheel"]):
+            package["results"].append(result)
+
+    def test_free_threaded_campaign_compares_with_the_gil_build(self):
+        # compare = "gil" (#182): a gap is a 3.14t musl-aarch64 wheel missing where 3.14 has one. NumPy and newpy
+        # are that. psycopg2 has neither, so it's left out. No package has a 3.14t wheel on another Linux
+        # platform, so the platform rule would have asked about none of them.
+        self.add_regular_314()
+        self.config.write_text(CONFIG + self.GIL, encoding="utf-8")
+        page = self.built_page()
+        todo = self.todo(page)
+        self.assertIn("NumPy", todo)
+        self.assertIn("newpy", todo)
+        self.assertNotIn("psycopg2", todo)
+        self.assertNotIn("requests", todo)
+        self.assertIn(
+            "2 of the top 5 packages have an Alpine ARM64 wheel for Python 3.14 but not for free-threaded "
+            "Python 3.14t, most-downloaded first",
+            page,
+        )
+        left_out = page.split("Left out:", 1)[1].split("</p>", 1)[0]
+        self.assertIn("1 package has no Alpine ARM64 wheel for Python 3.14 either (psycopg2).", left_out)
+        self.assertIn("a missing Python 3.14t wheel isn't a free-threading gap", left_out)
+        # The page says which Python its counts are for: 3.14 has more wheels here than 3.14t.
+        self.assertIn("of the top 5 packages have an Alpine ARM64 wheel for Python 3.14t today (1 of 4)", page)
+        self.assertIn("using Python 3.14t (set by the campaign)", page)
+        status = json.loads((self.site / "data" / "campaigns" / "musl-aarch64.json").read_text(encoding="utf-8"))
+        self.assertEqual(
+            (status["compare"], status["python"], status["target"]), ("gil", "3.14t", "3.14t musl-aarch64")
+        )
+        self.assertEqual([row["name"] for row in status["todo"]], ["NumPy", "newpy"])
+        self.assertEqual((status["wheels"], status["total"]), (1, 4))
+        index = (self.site / "campaigns" / "index.html").read_text(encoding="utf-8")
+        self.assertIn("<td>3.14t</td><td><strong>25%</strong> <span class=\"ver\">1 of 4</span></td><td>2</td>", index)
+        self.assertIn("for a free-threaded campaign", index)
+
+    def test_compare_indexes_for_gil(self):
+        self.add_regular_314()
+        targets = self.scan["targets"]
+        labels = [targets[i]["label"] for i in build_campaigns.compare_indexes(targets, "3.14t", "musl-aarch64", "gil")]
+        self.assertEqual(sorted(labels), ["3.14 musl-aarch64", "3.14t musl-aarch64"])
+        # The regular build has to be scanned on the campaign's own platform, and the python has to be free-threaded.
+        with self.assertRaisesRegex(SystemExit, "needs a free-threaded python with 3.14 on linux-x86_64"):
+            build_campaigns.compare_indexes(
+                targets + [{"label": "3.14t linux-x86_64", "python": "3.14t", "platform": "linux-x86_64"}],
+                "3.14t", "linux-x86_64", "gil",
+            )
+        with self.assertRaises(SystemExit):
+            build_campaigns.compare_indexes(targets, "3.14", "musl-aarch64", "gil")
+
+    def test_free_threaded_python_and_gil_need_each_other(self):
+        self.add_regular_314()
+        for extra, message in (
+            ('python = "3.14t"\n', 'free-threaded, so it needs compare = "gil"'),
+            ('python = "3.14t"\ncompare = "platform"\n', 'free-threaded, so it needs compare = "gil"'),
+            ('python = "3.14t"\ncompare = "python"\n', 'free-threaded, so it needs compare = "gil"'),
+            ('python = "3.14"\ncompare = "gil"\n', 'compare = "gil" needs a free-threaded python'),
+            ('compare = "gil"\n', 'compare = "gil" needs a free-threaded python'),
+            ('python = "3.14tt"\ncompare = "gil"\n', "python must be like"),
+        ):
+            with self.subTest(extra=extra):
+                self.config.write_text(CONFIG + extra, encoding="utf-8")
+                with self.assertRaisesRegex(SystemExit, message):
+                    build_campaigns.load_campaigns(self.config)
+        self.config.write_text(CONFIG + self.GIL, encoding="utf-8")
+        campaign = build_campaigns.load_campaigns(self.config)[0]
+        self.assertEqual((campaign["python"], campaign["compare"]), ("3.14t", "gil"))
+
+    def test_free_threaded_campaign_baseline_records_gil(self):
+        self.add_regular_314()
+        # requests gained the 3.14t wheel after the start, when it already had the 3.14 one: it was to do then,
+        # so the reconstructed starting list has it beside today's to-do list (NumPy and newpy).
+        self.changes_data.append({"date": "2026-11-11", "gained": [
+            {"name": "requests", "version": "2.32", "target": "3.14t musl-aarch64", "from": "source", "to": "wheel"},
+        ], "lost": []})
+        self.recordable(self.GIL)
+        self.assertEqual(self.record(), ["musl-aarch64"])
+        baseline = json.loads((self.root / "campaigns" / "musl-aarch64.json").read_text(encoding="utf-8"))
+        self.assertEqual((baseline["compare"], baseline["target"]), ("gil", "3.14t musl-aarch64"))
+        self.assertEqual([p["name"] for p in baseline["packages"]], ["NumPy", "requests", "newpy"])
+        done = self.done(self.built_page())
+        self.assertIn("<strong>1 of the 3</strong> packages on the to-do list at the start (2026-11-10) now has an "
+                      "Alpine ARM64 wheel for Python 3.14t.", done)
+        self.assertIn("requests", done)
+        # A list recorded by another rule isn't counted against this campaign.
+        (self.root / "campaigns" / "musl-aarch64.json").unlink()
+        self.write_baseline(compare="platform", target="3.14t musl-aarch64", top=4)
+        self.assertIn("was recorded for other settings (compare platform)", self.done(self.built_page()))
+
     def test_recorded_baseline_keeps_its_compare(self):
         # #103: the rule a starting list was built by is recorded with it.
         self.recordable('python = "3.15"\ncompare = "python"\n')
@@ -1033,6 +1128,36 @@ python = "3.13"
         baseline = build_campaigns.load_baseline(root / "data" / "campaigns" / "win-arm64.json")
         self.assertEqual(baseline["target"], "3.14 win-arm64")
         self.assertEqual(baseline["start"], win["start"])
+
+    def test_repo_config_has_the_free_threaded_campaign(self):
+        root = Path(__file__).resolve().parents[1]
+        campaigns = {c["id"]: c for c in build_campaigns.load_campaigns(root / "campaigns.toml")}
+        ft = campaigns["ft-314-linux"]
+        self.assertEqual(
+            (ft["platform"], ft["top"], ft["python"], ft["compare"]), ("linux-x86_64", 500, "3.14t", "gil")
+        )
+        self.assertTrue(ft["description"])
+
+    def test_repo_config_how_to_links_point_at_headings_that_exist(self):
+        root = Path(__file__).resolve().parents[1]
+        prefix = "https://github.com/wheelgap/tracker/blob/main/"
+        anchored = 0
+        for campaign in build_campaigns.load_campaigns(root / "campaigns.toml"):
+            how_to = campaign.get("how_to", "")
+            if not how_to.startswith(prefix):
+                continue
+            path, _, anchor = how_to.removeprefix(prefix).partition("#")
+            with self.subTest(campaign=campaign["id"]):
+                text = (root / path).read_text(encoding="utf-8")
+                if anchor:
+                    anchored += 1
+                    # GitHub's heading anchors: lowercase, punctuation dropped, spaces to hyphens.
+                    anchors = {
+                        re.sub(r"[^a-z0-9_ -]", "", heading.strip().lower()).replace(" ", "-")
+                        for heading in re.findall(r"^#+ (.+)$", text, flags=re.M)
+                    }
+                    self.assertIn(anchor, anchors)
+        self.assertGreaterEqual(anchored, 2)  # win-arm64 and ft-314-linux
 
     def test_rejects_unknown_scan_schema(self):
         self.scan["schema"] = 2
