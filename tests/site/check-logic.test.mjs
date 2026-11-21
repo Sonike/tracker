@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import {
   parseRepo, rawUrl, pickLockfile, toQuery, fromQuery, sortPythons, freeThreaded, fixFor, rowsFor, headline,
   cliCommand, fixPrompt, verdictText, nextSteps, validRef, labVerdict, labFor, canonicalName, gapWheelFor,
-  gapWheelFixText, withoutUnreadable, unreadableReason, tileText, missedText,
+  gapWheelFixText, withoutUnreadable, unreadableReason, tileText, missedText, badgeMarkdown,
 } from "../../site/check/check-logic.mjs";
 
 test("parseRepo reads the forms people paste", () => {
@@ -85,6 +85,25 @@ test("a result's query round-trips, and unknown values are dropped", () => {
   assert.deepEqual(odd.platforms, ["linux-x86_64"]);
   assert.equal(fromQuery("?repo=nope"), null);
   assert.equal(fromQuery(""), null);
+});
+
+test("the badge Markdown links the check of the repo alone, and names the lockfile only when it isn't the default", () => {
+  const repo = { owner: "fastapi", name: "full-stack-fastapi-template", ref: "dev", dir: "backend" };
+  const badge = "[![Check wheels](https://wheelgap.github.io/tracker/check/badge.svg)]";
+  const check = "https://wheelgap.github.io/tracker/check/";
+  // Never the ref, the Pythons or the platforms: a click checks the default branch on its CI's targets that day.
+  const plain = `${badge}(${check}?repo=fastapi/full-stack-fastapi-template)`;
+  assert.equal(badgeMarkdown(repo, "uv.lock", "uv.lock"), plain);
+  assert.equal(badgeMarkdown(repo, null, null), plain);
+  assert.equal(badgeMarkdown(repo, "backend/uv.lock", "uv.lock"), `${badge}(${check}?repo=fastapi/full-stack-fastapi-template&lock=backend/uv.lock)`);
+  // A path with characters that would end the Markdown link, or the query, early.
+  const odd = "my app/a(1)&b=c#d/100%/[x] \"q\"/uv.lock";
+  const md = badgeMarkdown({ owner: "o", name: "r" }, odd, "uv.lock");
+  assert.equal(md, `${badge}(${check}?repo=o/r&lock=my+app/a%281%29%26b%3Dc%23d/100%25/%5Bx%5D+%22q%22/uv.lock)`);
+  const url = md.slice(badge.length + 1, -1);
+  assert.doesNotMatch(url, /[\s()[\]<>"']/);
+  // The page reads the link back as the same repo and file, with nothing else picked.
+  assert.deepEqual(fromQuery(new URL(url).search), { repo: { owner: "o", name: "r", ref: null, dir: null }, lockfile: odd, pythons: [], platforms: [] });
 });
 
 test("Pythons sort with each free-threaded build after its own", () => {

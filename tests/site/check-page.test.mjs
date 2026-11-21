@@ -214,3 +214,30 @@ test("a pyproject.toml that was fetched to be checked is gone again before anoth
   assert.deepEqual([...missing.repo.fetched], ["uv.lock", "requirements.txt"]);
   assert.equal(missing.checked.length, 1);
 });
+
+test("the badge is a small static image on the page's own origin, offered as Markdown under the copy buttons", () => {
+  const svg = read("badge.svg");
+  assert.ok(Buffer.byteLength(svg) < 1500, "around 1 KB");
+  assert.match(svg, /^<svg xmlns="http:\/\/www\.w3\.org\/2000\/svg" width="146" height="20" role="img" aria-label="wheelgap: check wheels"><title>wheelgap: check wheels<\/title>/);
+  // Nothing that runs or loads: GitHub serves README images through its proxy, which drops such an SVG.
+  assert.doesNotMatch(svg, /<script|<style|<image|<use|<foreignObject|href=|\bon[a-z]+=|@import|url\((?!#)/i);
+  assert.deepEqual([...svg.matchAll(/>([^<>]+)<\/text>/g)].map((m) => m[1]), ["wheelgap", "wheelgap", "check wheels", "check wheels"]);
+
+  const html = read("index.html");
+  const fix = html.slice(html.indexOf('id="next-title"'), html.indexOf('id="caveats"'));
+  const section = fix.match(/<section id="badge" aria-labelledby="badge-title">(.*?)<\/section>/s);
+  assert.ok(section, "the badge is in the Fix it section");
+  assert.ok(fix.indexOf('id="copy-link"') < fix.indexOf('id="badge"'), "under the two Copy buttons");
+  assert.match(section[1], /<h3 id="badge-title">Add a badge to your README<\/h3>/);
+  // Same origin, so the page's `img-src 'self'` allows it; and it says it isn't a result.
+  assert.match(section[1], /<img class="badge-img" src="badge\.svg" alt="wheelgap: check wheels" width="146" height="20">/);
+  assert.match(html, /img-src 'self' data:;/);
+  assert.match(section[1], /shows no result/);
+  assert.match(section[1], /<pre><code id="badge-md"><\/code><\/pre>\s*<button type="button" class="action" id="copy-badge">Copy badge Markdown<\/button>/);
+
+  const page = read("check.mjs");
+  // Filled in as text, from the pure helper, and copied the way the other buttons copy.
+  assert.match(page, /\$\("badge-md"\)\.textContent = badgeMarkdown\(state\.repo, r\.lockfile, pickLockfile\(state\.plan\.lockfiles, null\)\?\.path \?\? null\);/);
+  assert.match(page, /\$\("copy-badge"\)\.onclick = \(e\) => copy\(e\.currentTarget, \$\("badge-md"\)\.textContent, "Badge Markdown copied"\);/);
+  assert.doesNotMatch(page, /innerHTML/);
+});

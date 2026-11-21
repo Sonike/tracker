@@ -11,7 +11,7 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-from scripts import build_campaigns, build_lab, build_pages, build_platform_pages
+from scripts import build_campaigns, build_lab, build_new_wheels, build_pages, build_platform_pages
 
 # Declared lab coverage for these tests. The musl entry's "platform" is the interpreter's (linux-aarch64), which must
 # not count as lab coverage for Linux ARM64.
@@ -120,6 +120,35 @@ class PlatformPageTests(unittest.TestCase):
         self.assertIn('<link rel="alternate" type="application/atom+xml" title="New win-arm64 wheels" href="../../new/win-arm64.xml">', win)
         for page in (root, win, linux):  # the footer's link to the tool, on the index and on each platform
             self.assertIn(f"</main>\n{build_campaigns.FOOTER}\n</body>", page)
+            self.assertIn('<nav aria-label="Site">', page)
+        # on index (root): platforms has aria-current="page", no other does
+        self.assertIn('<a href="../platforms/" aria-current="page">Platforms</a>', root)
+        self.assertEqual(root.count('aria-current='), 1)
+        for target in ("../", "../check/", "../platforms/", "../campaigns/", "../new/", "../drops/"):
+            self.assertIn(f'<a href="{target}"', root)
+        # on platform page (win): platforms has aria-current="true", no other does
+        self.assertIn('<a href="../../platforms/" aria-current="true">Platforms</a>', win)
+        self.assertEqual(win.count('aria-current='), 1)
+        for target in ("../../", "../../check/", "../../platforms/", "../../campaigns/", "../../new/", "../../drops/"):
+            self.assertIn(f'<a href="{target}"', win)
+
+    def test_index_advertises_each_platform_pages_feed(self):
+        self.run_build()
+        build_new_wheels.build(self.root / "missing.json", self.coverage, self.site)
+        root = (self.site / "platforms" / "index.html").read_text(encoding="utf-8")
+        links = re.findall(r'<link rel="alternate" type="application/atom\+xml" title="([^"]*)" href="([^"]*)">', root)
+        self.assertEqual(root.count('rel="alternate"'), len(links))
+        # One per platform with a page (linux-aarch64, pyodide, linux-x86_64 and win-arm64 here), in PLATFORM_NAMES order.
+        pages = [p for p in build_pages.PLATFORM_NAMES if (self.site / "platforms" / p / "index.html").exists()]
+        self.assertEqual(len(pages), 4)
+        self.assertEqual(links, [(f"New {p} wheels", f"../new/{p}.xml") for p in pages])
+        for _title, href in links:
+            with self.subTest(href=href):
+                feed = (self.site / "platforms" / href).resolve()
+                self.assertEqual(feed.parent, (self.site / "new").resolve())
+                self.assertTrue(feed.is_file(), "build_new_wheels.build() writes it")
+        # Each platform page still has just its own feed.
+        self.assertEqual(self.read("win-arm64").count('rel="alternate"'), 1)
 
     def test_escaping(self):
         self.run_build()

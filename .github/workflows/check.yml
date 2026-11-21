@@ -31,10 +31,11 @@ jobs:
         run: python3 scripts/check_notes.py
       - name: Repo checker driver
         # site/check/driver.py against the wheelgap release site/check/worker.mjs runs in the browser.
+        # test_check_parity.py compares its answers with that release's CLI, for every file format the page reads.
         run: |
           pin=$(sed -n 's/^export const WHEELGAP = "wheelgap==\(.*\)";$/\1/p' site/check/worker.mjs)
           # --refresh-package: never an older page for wheelgap, cached from before a release.
-          uvx --python 3.14 --refresh-package wheelgap --with "wheelgap==$pin" pytest@8.4.2 tests/test_check_driver.py
+          uvx --python 3.14 --refresh-package wheelgap --with "wheelgap==$pin" pytest@8.4.2 tests/test_check_driver.py tests/test_check_parity.py
       - name: Site syntax
         run: node --check site/logic.js && node --check site/not-found.js && node --check site/app.js && node --check site/lab.js && for f in site/check/*.mjs; do node --check "$f"; done
       - name: Site logic

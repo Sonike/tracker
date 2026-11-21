@@ -4,7 +4,7 @@
 import {
   PLATFORMS, PYTHONS, parseRepo, pickLockfile, toQuery, fromQuery, sortPythons, freeThreaded,
   fixFor, rowsFor, headline, cliCommand, fixPrompt, verdictText, nextSteps, validRef, labVerdict, labFor, canonicalName, gapWheelFor,
-  gapWheelFixText, withoutUnreadable, unreadableReason, tileText, missedText,
+  gapWheelFixText, withoutUnreadable, unreadableReason, tileText, missedText, badgeMarkdown,
 } from "./check-logic.mjs";
 
 const $ = (id) => document.getElementById(id);
@@ -414,6 +414,8 @@ function renderTable() {
 function renderNext() {
   const r = state.result;
   $("cli").textContent = cliCommand(r, state.pythons, state.platforms);
+  // The link names the lockfile only when a visit with the repo alone would start from another one.
+  $("badge-md").textContent = badgeMarkdown(state.repo, r.lockfile, pickLockfile(state.plan.lockfiles, null)?.path ?? null);
   const caveats = [
     "A wheel on PyPI means pip and uv install it without compiling; it doesn't test that the package works there.",
     r.looked_up
@@ -440,6 +442,7 @@ async function copy(button, text, done) {
 
 $("copy-link").onclick = (e) => copy(e.currentTarget, location.href, "Link copied");
 $("copy-prompt").onclick = (e) => copy(e.currentTarget, fixPrompt(`${state.repo.owner}/${state.repo.name}`, state.result, state.fixes, state.pythons, state.platforms, state.gapWheels), "Prompt copied");
+$("copy-badge").onclick = (e) => copy(e.currentTarget, $("badge-md").textContent, "Badge Markdown copied");
 $("copy-gap-wheels").onclick = (e) => copy(e.currentTarget, state.gapWheels.text, "Gap wheel instructions copied");
 $("more").onclick = () => { state.showAll = true; renderTable(); };
 
