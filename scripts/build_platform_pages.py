@@ -71,7 +71,7 @@ def _page(
 """
 
 
-def _table(rows: list) -> str:
+def _table(rows: list, caption: str) -> str:
     e = html.escape
     body = []
     for item in rows:
@@ -93,8 +93,9 @@ def _table(rows: list) -> str:
     if not body:
         return '<p class="note">None of the top packages is missing a wheel here.</p>'
     return (
-        '<div class="matrix-scroll"><table class="matrix">'
-        "<thead><tr><th>Rank</th><th>Package</th><th>Version</th><th>Status</th></tr></thead>"
+        f"{build_campaigns.table_open(caption, 'caption-wanted')}"
+        '<thead><tr><th scope="col">Rank</th><th scope="col">Package</th><th scope="col">Version</th>'
+        '<th scope="col">Status</th></tr></thead>'
         "<tbody>" + "".join(body) + "</tbody></table></div>"
     )
 
@@ -146,8 +147,9 @@ def _over_time_table(picked: list[tuple[str, dict, bool]], pyodide: bool) -> str
             f"<td>{row['wheels']:,} / {row['packages']:,}</td><td>{row['percent']:.1f}%{note}</td></tr>"
         )
     return (
-        '<div class="matrix-scroll"><table class="matrix">'
-        f"<thead><tr><th>Night</th><th>Date</th><th>{counted}</th><th>Share</th></tr></thead>"
+        f"{build_campaigns.table_open('Coverage over time', 'caption-over-time')}"
+        f'<thead><tr><th scope="col">Night</th><th scope="col">Date</th><th scope="col">{counted}</th>'
+        '<th scope="col">Share</th></tr></thead>'
         "<tbody>" + "".join(body) + "</tbody></table></div>"
     )
 
@@ -164,8 +166,9 @@ def _index_table(rows: list) -> str:
             f"<td>{e(share)}</td><td>{gaps:,}</td></tr>"
         )
     return (
-        '<div class="matrix-scroll"><table class="matrix">'
-        "<thead><tr><th>Platform</th><th>Python</th><th>Share with a wheel</th><th>Packages without one</th></tr></thead>"
+        f"{build_campaigns.table_open('Wheel coverage by platform', 'caption-platforms')}"
+        '<thead><tr><th scope="col">Platform</th><th scope="col">Python</th><th scope="col">Share with a wheel</th>'
+        '<th scope="col">Packages without one</th></tr></thead>'
         "<tbody>" + "".join(body) + "</tbody></table></div>"
     )
 
@@ -218,7 +221,8 @@ def build(
             f"for Python {python}{change_note(trend)}."
         )
         source = wanted["targets"].get(label, [])
-        table = _table(source[:50] if isinstance(source, list) else [])
+        caption = f"Most-wanted wheels for Python {python} on {friendly}"
+        table = _table(source[:50] if isinstance(source, list) else [], caption)
 
         campaign_links = []
         for c in campaigns:

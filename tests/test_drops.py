@@ -7,6 +7,7 @@ import xml.etree.ElementTree as ET
 import pytest
 
 from scripts import build_drops, update_drops
+from table_checks import check_tables
 
 LABELS = ["3.14 linux-x86_64", "3.14 win-amd64", "3.14 win-arm64"]
 PY_LABELS = ["3.13 linux-x86_64", "3.13 win-amd64", "3.14 linux-x86_64", "3.14 win-amd64"]
@@ -337,6 +338,18 @@ def test_page_and_feed(tmp_path):
     assert links[1:] == [f"{base}p/cryptography/", "https://pypi.org/project/old-pkg/"]
     sitemap = (site / "sitemap.xml").read_text(encoding="utf-8")
     assert f"<loc>{base}drops/</loc>" in sitemap
+
+
+def test_the_table_is_named_and_keyboard_scrollable(tmp_path):
+    drops = {"schema": 1, "waiting": [], "drops": [
+        {"date": "2026-11-16", "name": "cryptography", "from": "46.0.3", "version": "46.0.4", "target": "3.14 win-arm64"},
+    ]}
+    (tmp_path / "drops.json").write_text(json.dumps(drops), encoding="utf-8")
+    site = tmp_path / "site"
+    build_drops.build(tmp_path / "drops.json", write_coverage(tmp_path, ["cryptography"]), site)
+    page = (site / "drops" / "index.html").read_text(encoding="utf-8")
+    assert check_tables(page) == ["Dropped platforms, newest first"]  # #184
+    assert page.count("<table") == 1
 
 
 def test_page_without_drops_or_file(tmp_path):

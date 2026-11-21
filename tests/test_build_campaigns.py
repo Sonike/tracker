@@ -11,6 +11,7 @@ import unittest
 from pathlib import Path
 
 from scripts import build_campaigns, build_pages, update_changes, update_history
+from table_checks import check_tables
 
 
 CONFIG = """
@@ -257,8 +258,26 @@ class CampaignTests(unittest.TestCase):
     def test_note_marker_href_is_escaped(self):
         item = {"rank": 1, "name": "x", "version": "1", "status": "source", "canonical": "x",
                 "note": 'https://example.com/a?b=1&c="<x>'}
-        row = build_campaigns.rows_html([item], kind="todo", include_source=False)
+        row = build_campaigns.rows_html([item], kind="todo", include_source=False, caption="To do", caption_id="c")
         self.assertIn('<a href="https://example.com/a?b=1&amp;c=&quot;&lt;x&gt;">has a note</a>', row)
+
+    def test_every_table_is_named_and_keyboard_scrollable(self):
+        # #184: the trend, To do, Has an alternative and Done tables of a campaign page, and the index's table.
+        title = "musllinux aarch64 wheels for the top 500"
+        trend, done = "Nightly scan totals for 3.15 musl-aarch64", f"{title}: packages done"
+        page = self.built_page()
+        self.assertEqual(check_tables(page), [trend, f"{title}: packages to do, most-downloaded first", done])
+        self.assertEqual(page.count("<table"), 3)
+        # With the note, the only package to do has an alternative: its row moves to that section's table.
+        page = self.page_with_note("alternative")
+        self.assertEqual(check_tables(page), [trend, f"{title}: packages with an alternative", done])
+        index = (self.site / "campaigns" / "index.html").read_text(encoding="utf-8")
+        self.assertEqual(check_tables(index), ["All campaigns"])
+
+    def test_table_captions_are_escaped(self):
+        opened = build_campaigns.table_open('a<b> & "c"', 'x"y')
+        self.assertIn('<caption id="x&quot;y" class="visually-hidden">a&lt;b&gt; &amp; &quot;c&quot;</caption>', opened)
+        self.assertIn('aria-labelledby="x&quot;y"', opened)
 
     def test_cli_reads_the_repo_notes(self):
         # The CLI passes NOTES_DIR. Give the scan every platform the repo's psycopg2 note lists, so the
@@ -549,7 +568,7 @@ class CampaignTests(unittest.TestCase):
              "summary": {"3.15 musl-aarch64": {"wheel": 86, "source": 9, "missing": 5, "unknown": 0}}}
         )
         trend = self.trend(self.built_page())
-        self.assertIn("<th>Note</th>", trend)
+        self.assertIn('<th scope="col">Note</th>', trend)
         # 11 Nov is the first 0.9.0 night (9 Nov, before start, was 0.8.0); 12 Nov is unchanged.
         self.assertIn("<tr><td>2026-11-11</td><td>85 / 100</td><td>85%</td><td>wheelgap 0.9.0</td></tr>", trend)
         self.assertIn("<tr><td>2026-11-12</td><td>86 / 100</td><td>86%</td><td></td></tr>", trend)
@@ -557,7 +576,7 @@ class CampaignTests(unittest.TestCase):
 
     def test_trend_has_no_note_column_without_a_version_change(self):
         trend = self.trend(self.built_page())
-        self.assertNotIn("<th>Note</th>", trend)
+        self.assertNotIn("Note</th>", trend)
         self.assertNotIn("wheelgap 0.8.0", trend)
         self.assertNotIn("can come from the tool", trend)
 

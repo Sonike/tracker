@@ -12,6 +12,7 @@ from pathlib import Path
 from unittest import mock
 
 from scripts import build_campaigns, build_lab, build_pages, build_platform_pages
+from table_checks import check_tables
 
 # Declared lab coverage for these tests. The musl entry's "platform" is the interpreter's (linux-aarch64), which must
 # not count as lab coverage for Linux ARM64.
@@ -325,6 +326,14 @@ class OverTimeTests(unittest.TestCase):
             ("Latest", "2026-09-08"), ("Night before", "2026-09-07"), ("7 nights before", "2026-09-01"),
         ])  # 7 nights before is also the first night, so it isn't repeated
         self.assertIn("for Python 3.15, up 0.7 points since 2026-09-01.", page)
+
+    def test_every_table_is_named_and_keyboard_scrollable(self):
+        # #184: a platform page's most-wanted and Over time tables, and the index's table.
+        page = self.build_with([night(i, 500 + i) for i in range(8)])
+        self.assertEqual(check_tables(page), ["Most-wanted wheels for Python 3.15 on Windows ARM64", "Coverage over time"])
+        self.assertEqual(page.count("<table"), 2)
+        index = (self.site / "platforms" / "index.html").read_text(encoding="utf-8")
+        self.assertEqual(check_tables(index), ["Wheel coverage by platform"])
 
     def test_forty_nights(self):
         history = [night(i, 500 + i) for i in range(40)]

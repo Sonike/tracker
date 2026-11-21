@@ -9,6 +9,7 @@ import zipfile
 from pathlib import Path
 
 from scripts import build_lab, build_pages
+from table_checks import check_tables
 
 TARGETS = ["3.14 win-arm64", "3.14t win-arm64", "3.14t linux-x86_64", "3.14 musl-aarch64", "3.14 linux-x86_64"]
 
@@ -437,6 +438,7 @@ class BuildLabVerdictAndPage(unittest.TestCase):
             }
         ]
         html_page = build_pages.page(scan["packages"][0], scan, "3.14", builds=builds)
+        self.assertEqual(check_tables(html_page), ["demo 1.0.0 by platform and Python", "Build lab results"])  # #184
         self.assertIn("builds from source in 87 s and imports", html_page)
         self.assertIn('<small class="bver">builds from source in 87 s and imports</small>', html_page)
         self.assertIn('<section aria-labelledby="build-lab">', html_page)

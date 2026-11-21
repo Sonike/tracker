@@ -515,16 +515,18 @@ def article(name: str) -> str:
     return "an" if name[:1].lower() in "aeiou" else "a"
 
 
-def rows_html(items: list[dict], *, kind: str, include_source: bool, empty: str = "") -> str:
+def rows_html(
+    items: list[dict], *, kind: str, include_source: bool, empty: str = "", caption: str, caption_id: str
+) -> str:
     e = html.escape
     if not items:
         empty = empty or ("None yet." if kind == "done" else "Every package in the set already has a wheel.")
         return f'        <p class="note">{empty}</p>\n'
-    head = "<th>Rank</th><th>Package</th><th>Status</th>"
+    head = '<th scope="col">Rank</th><th scope="col">Package</th><th scope="col">Status</th>'
     if kind == "done":
-        head = "<th>Date</th><th>Package</th><th>Was</th>"
+        head = '<th scope="col">Date</th><th scope="col">Package</th><th scope="col">Was</th>'
     if include_source:
-        head += "<th>Source</th>"
+        head += '<th scope="col">Source</th>'
     body = []
     for item in items:
         name = item["name"]
@@ -553,7 +555,7 @@ def rows_html(items: list[dict], *, kind: str, include_source: bool, empty: str 
             cells += f'<td><a href="{e(url)}">{e(url)}</a></td>' if url else "<td></td>"
         body.append(f"          <tr>{cells}</tr>")
     return (
-        '        <div class="matrix-scroll"><table class="matrix">\n'
+        f"        {table_open(caption, caption_id)}\n"
         f"          <thead><tr>{head}</tr></thead>\n"
         "          <tbody>\n"
         + "\n".join(body)
@@ -591,9 +593,9 @@ def trend_html(rows: list[dict], label: str, start: str) -> str:
     return (
         f'        <p class="note">Nightly scan totals for {e(label)} {since}. They count every package in the '
         f"scan, not only this campaign's top N (history.json does not keep a top-N slice).{upgrade_note}</p>\n"
-        '        <div class="matrix-scroll"><table class="matrix">\n'
-        "          <thead><tr><th>Date</th><th>Wheels</th><th>Share</th>"
-        + ("<th>Note</th>" if upgrades else "")
+        f"        {table_open(f'Nightly scan totals for {label}', 'caption-trend')}\n"
+        '          <thead><tr><th scope="col">Date</th><th scope="col">Wheels</th><th scope="col">Share</th>'
+        + ('<th scope="col">Note</th>' if upgrades else "")
         + "</tr></thead>\n"
         f"          <tbody>\n{body}\n          </tbody>\n"
         "        </table></div>\n"
@@ -658,6 +660,22 @@ NAV_SECTIONS: tuple[tuple[str, str, str], ...] = (
     ("new", "new/", "New wheels"),
     ("drops", "drops/", "Dropped platforms"),
 )
+
+
+def table_open(caption: str, caption_id: str, classes: str = "matrix") -> str:
+    """The start of a table on a generated page: its scrolling wrapper, the <table> tag and its caption.
+
+    The caption names the table for a screen reader's table list; it is visually hidden, since a heading or the
+    page title already says the same to everyone else. The wrapper scrolls sideways when the table is wider than
+    the screen, so it is focusable (tabindex="0") for keyboard users to scroll it, and a region named by the
+    caption so that tab stop has a name. `caption_id` must be unique on the page.
+    """
+    e = html.escape
+    return (
+        f'<div class="matrix-scroll" tabindex="0" role="region" aria-labelledby="{e(caption_id, quote=True)}">'
+        f'<table class="{e(classes, quote=True)}">'
+        f'<caption id="{e(caption_id, quote=True)}" class="visually-hidden">{e(caption)}</caption>'
+    )
 
 
 def site_nav(root: str, current: str | None = None, *, inside: bool = False) -> str:
@@ -760,7 +778,7 @@ def page(
             f"{e(article(platform_name))} {e(platform_name)} wheel but {'has' if one else 'have'} a note naming a "
             "different package or extra that has one, so this campaign doesn't ask upstream about "
             f"{'it' if one else 'them'}. {not_counted} counted in To do.</p>\n"
-            f"{rows_html(set_aside, kind='todo', include_source=include_source)}"
+            f"{rows_html(set_aside, kind='todo', include_source=include_source, caption=f'{title}: packages with an alternative', caption_id='caption-alternative')}"
             "    </section>\n"
         )
     todo_why = (
@@ -902,11 +920,11 @@ def page(
     <section>
       <h2>To do</h2>
       <p class="note">{len(todo)} of the top {top} packages {e(todo_why)}, most-downloaded first{set_aside_count}.{read_notes} {e(ASK_FIRST)}{how_to_html}</p>
-{rows_html(todo, kind="todo", include_source=include_source, empty=todo_empty)}{waiting_html}    </section>
+{rows_html(todo, kind="todo", include_source=include_source, empty=todo_empty, caption=f"{title}: packages to do, most-downloaded first", caption_id="caption-todo")}{waiting_html}    </section>
 {set_aside_html}    <section>
       <h2>Done</h2>
       <p>{progress}</p>
-{f'      <p class="note">{done_note}</p>{chr(10)}' if done_note else ""}{"" if mismatch else rows_html(done, kind="done", include_source=False)}    </section>
+{f'      <p class="note">{done_note}</p>{chr(10)}' if done_note else ""}{"" if mismatch else rows_html(done, kind="done", include_source=False, caption=f"{title}: packages done", caption_id="caption-done")}    </section>
   </main>
 {FOOTER}
 </body>
@@ -997,8 +1015,8 @@ def index_page(listings: list[dict], generated: str, wheelgap: str) -> str:
     <section>
       <h2>All campaigns</h2>
       <p class="note">Coverage is the share of each campaign's top packages with a wheel for its platform and Python. To do counts the packages that have wheels for that Python on other platforms but not this one, or, for a new-Python campaign, a wheel on that platform for the Python before it but not for the new one. As JSON: <a href="../data/campaigns.json">data/campaigns.json</a>.</p>
-        <div class="matrix-scroll"><table class="matrix">
-          <thead><tr><th>Campaign</th><th>Platform</th><th>Python</th><th>Coverage</th><th>To do</th></tr></thead>
+        {table_open("All campaigns", "caption-campaigns")}
+          <thead><tr><th scope="col">Campaign</th><th scope="col">Platform</th><th scope="col">Python</th><th scope="col">Coverage</th><th scope="col">To do</th></tr></thead>
           <tbody>
 {rows}
           </tbody>

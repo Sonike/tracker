@@ -386,7 +386,7 @@ def install_html(install: dict, page_names: set[str] | None = None, own_name: st
         '      <h2 id="install-coverage">Install coverage with dependencies</h2>\n'
         '      <p>Wheelgap checks the scanned release and its dependencies without extras. A target is marked '
         '“Not checked” if wheelgap could not resolve the full dependency tree or verify its packages.</p>\n'
-        '      <div class="matrix-scroll"><table class="matrix">\n'
+        f"      {build_campaigns.table_open('Install results with dependencies', 'caption-install')}\n"
         '        <thead><tr><th scope="col">Target</th><th scope="col">Install result</th></tr></thead>\n'
         '        <tbody>\n'
         f'{"".join(rows)}'
@@ -423,7 +423,7 @@ def lab_html(builds: list[dict]) -> str:
         '      <p class="sub">A dated observation on GitHub\'s runners, not a promise about your machine: '
         'runners come with compilers and many system libraries preinstalled, so a build that works there '
         'can still need setup on your machine.</p>\n'
-        '      <div class="matrix-scroll"><table class="matrix lab-table">\n'
+        f"      {build_campaigns.table_open('Build lab results', 'caption-lab', 'matrix lab-table')}\n"
         '        <thead><tr><th scope="col">Target</th><th scope="col">From source</th>'
         '<th scope="col">Details</th></tr></thead>\n'
         '        <tbody>\n'
@@ -671,10 +671,10 @@ def page(
   </header>
   <main class="wrap">
     <div class="card">
-      <h3>{e(name)} <span class="ver">{e(version)}</span></h3>
+      <h2 class="card-title">{e(name)} <span class="ver">{e(version)}</span></h2>
       <p class="sub">{sub}</p>
-{campaign_line}      <div class="matrix-scroll"><table class="matrix">
-        <thead><tr><th>Platform</th>{"".join(f"<th>{e(py)}</th>" for py in pys)}</tr></thead>
+{campaign_line}      {build_campaigns.table_open(f"{name} {version} by platform and Python", "caption-coverage")}
+        <thead><tr><th scope="col">Platform</th>{"".join(f'<th scope="col">{e(py)}</th>' for py in pys)}</tr></thead>
         <tbody>
 {rows}
         </tbody>

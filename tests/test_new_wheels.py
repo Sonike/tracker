@@ -5,6 +5,7 @@ import xml.etree.ElementTree as ET
 from pathlib import Path
 
 from scripts import build_new_wheels, build_pages
+from table_checks import check_tables
 
 
 def write_coverage(tmp_path, names):
@@ -171,6 +172,18 @@ def test_page_and_feeds_and_escaping(tmp_path):
     # Check sitemap
     sitemap = (site / "sitemap.xml").read_text(encoding="utf-8")
     assert f"<loc>{build_new_wheels.BASE_URL}new/</loc>" in sitemap
+
+
+def test_the_table_is_named_and_keyboard_scrollable(tmp_path):
+    changes = [{"date": "2026-11-17", "lost": [], "gained": [
+        {"name": "cryptography", "version": "46.0.4", "target": "3.15 win-arm64", "from": "missing", "to": "wheel"},
+    ]}]
+    (tmp_path / "changes.json").write_text(json.dumps(changes), encoding="utf-8")
+    site = tmp_path / "site"
+    build_new_wheels.build(tmp_path / "changes.json", write_coverage(tmp_path, ["cryptography"]), site)
+    page = (site / "new" / "index.html").read_text(encoding="utf-8")
+    assert check_tables(page) == ["New wheels, newest first"]  # #184
+    assert page.count("<table") == 1
 
 
 def test_page_without_changes_or_file(tmp_path):

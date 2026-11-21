@@ -56,8 +56,9 @@ def page(items: list[dict], waiting: int, scanned: set[str]) -> str:
         for r in items[:PAGE_LIMIT]
     )
     body = (
-        '        <div class="matrix-scroll"><table class="matrix">\n'
-        "          <thead><tr><th>Date</th><th>Package</th><th>Release</th><th>Dropped</th></tr></thead>\n"
+        f"        {build_campaigns.table_open('Dropped platforms, newest first', 'caption-drops')}\n"
+        '          <thead><tr><th scope="col">Date</th><th scope="col">Package</th><th scope="col">Release</th>'
+        '<th scope="col">Dropped</th></tr></thead>\n'
         f"          <tbody>\n{rows}\n          </tbody>\n"
         "        </table></div>\n"
         if items

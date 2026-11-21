@@ -155,8 +155,9 @@ def page(items: list[dict], scanned: set[str]) -> str:
         for r in items[:PAGE_LIMIT]
     )
     body = (
-        '        <div class="matrix-scroll"><table class="matrix">\n'
-        "          <thead><tr><th>Date</th><th>Package</th><th>Version</th><th>Gained</th><th>Was</th></tr></thead>\n"
+        f"        {build_campaigns.table_open('New wheels, newest first', 'caption-new')}\n"
+        '          <thead><tr><th scope="col">Date</th><th scope="col">Package</th><th scope="col">Version</th>'
+        '<th scope="col">Gained</th><th scope="col">Was</th></tr></thead>\n'
         f"          <tbody>\n{rows}\n          </tbody>\n"
         "        </table></div>\n"
         if items

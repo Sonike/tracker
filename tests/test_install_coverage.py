@@ -6,6 +6,7 @@ import unittest
 from pathlib import Path
 
 from scripts import build_lookup, build_pages
+from table_checks import check_tables, headings
 
 
 class InstallCoverageTests(unittest.TestCase):
@@ -56,6 +57,24 @@ class InstallCoverageTests(unittest.TestCase):
         self.assertEqual(current.get("install"), self.install)
         self.assertNotIn("install", older)
         self.assertEqual(current["results"], {label: "wheel" for label in self.install})
+
+    def test_every_table_is_named_and_keyboard_scrollable(self):
+        # #184: the coverage matrix and the install table (the build lab's is checked in test_build_lab.py).
+        output = self.root / "site"
+        build_pages.build(self.coverage(), output, root=self.root)
+        page = (output / "p" / "demo" / "index.html").read_text(encoding="utf-8")
+        self.assertEqual(check_tables(page), ["demo 1.2 by platform and Python", "Install results with dependencies"])
+        self.assertEqual(page.count("<table"), 2)
+
+    def test_headings_go_h1_then_h2s(self):
+        output = self.root / "site"
+        build_pages.build(self.coverage(), output, root=self.root)
+        for name in ("demo", "older"):
+            with self.subTest(name=name):
+                tags = headings((output / "p" / name / "index.html").read_text(encoding="utf-8"))
+                self.assertEqual(tags[:2], ["h1", "h2"])  # the card's heading; it was an h3 (#184)
+                self.assertEqual(tags.count("h1"), 1)
+                self.assertIn("h2", tags[2:] if name == "demo" else tags)  # demo also has the install section
 
     def test_page_shows_target_outcomes_and_escapes_dependency_paths(self):
         output = self.root / "site"
