@@ -80,7 +80,7 @@ jobs:
           done
           exit 1
       - name: Leave out names PyPI no longer has
-        run: python3 scripts/drop_missing_names.py data/coverage.json
+        run: python3 scripts/drop_missing_names.py data/coverage.json previous.json
       - name: Check the scan looks right
         env:
           ALLOW_DROP: ${{ inputs.allow_drop && '1' || '' }}

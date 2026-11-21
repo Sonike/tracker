@@ -268,7 +268,7 @@ test("scan metadata explains names left out of the ranking, with singular and pl
     vm.runInContext(`state.data.packages = rankedPackages.slice(0, -${count});
       state.data.dropped_names = { count: ${count}, names: [] }; renderMeta()`, context);
     assert.equal(get("meta").textContent,
-      `${original} · ${count} ${count === 1 ? "name" : "names"} PyPI doesn't have left out of the top ${
+      `${original} · ${count} ${count === 1 ? "name" : "names"} with no project to install on PyPI left out of the top ${
         coverage().packages.length.toLocaleString("en-GB")}`);
   }
   vm.runInContext("delete state.data.dropped_names; renderMeta()", context);

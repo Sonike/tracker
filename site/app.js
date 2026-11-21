@@ -139,7 +139,7 @@ function renderMeta() {
     `wheelgap ${d.wheelgap} · download ranking from ${d.top_packages.last_update?.slice(0, 10) ?? "top-pypi-packages"}`;
   const dropped = d.dropped_names?.count ?? 0;
   if (dropped > 0) {
-    $("meta").textContent += ` · ${fmt(dropped)} ${dropped === 1 ? "name" : "names"} PyPI doesn't have ` +
+    $("meta").textContent += ` · ${fmt(dropped)} ${dropped === 1 ? "name" : "names"} with no project to install on PyPI ` +
       `left out of the top ${fmt(d.packages.length + dropped)}`;
   }
   const pure = d.packages.filter((p) => p.pure).length;
