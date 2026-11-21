@@ -141,7 +141,8 @@ def run_cli(lock: Path, *flags: str, env: dict[str, str] | None = None) -> dict:
     locally" box hands out, on the wheelgap this test runs with."""
     cmd = [sys.executable, "-m", "wheelgap", lock.name, *flags, "--json"]
     cmd += ["-p", ",".join(PYTHONS), "-t", ",".join(PLATFORMS)]
-    # A cache folder of the test's own: no lookup is read from, or saved to, the developer's.
+    # A cache folder of the test's own: no lookup is read from, or saved to, the developer's. XDG_CACHE_HOME only
+    # moves the cache on Linux, so the looked-up tests also pass --no-cache.
     # And no proxy between the CLI and the index this test serves on 127.0.0.1.
     run_env = {**os.environ, "XDG_CACHE_HOME": str(lock.parent / ".cache"), "NO_COLOR": "1"} | (env or {})
     run_env |= {"NO_PROXY": "127.0.0.1", "no_proxy": "127.0.0.1"}
@@ -379,7 +380,7 @@ LOOKED_UP_SKIPPED = {
 def test_a_looked_up_file_gets_the_clis_answer(tmp_path, index, name):
     LOOKED_UP[name](tmp_path)
     lock = tmp_path / name
-    cli = run_cli(lock, env={"WHEELGAP_INDEX_URL": index})
+    cli = run_cli(lock, "--no-cache", env={"WHEELGAP_INDEX_URL": index})
     page = run_driver(lock, fetch_lookups(lock))
     assert_same_answer(cli, page)
     # The fixture has what it's meant to: every status, the 404 as unknown (never a gap), and the skipped packages.
